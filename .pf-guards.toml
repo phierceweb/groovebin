@@ -1,0 +1,4 @@
+# Structural gate config, read by `python -m pf_core.guards` (bin/run lint and CI).
+# No baseline table: a file over the soft limit is split, never grandfathered.
+[tool.pf_guards]
+root = ["src/groovebin", "tests"]

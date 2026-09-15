@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groovebin"
+version = "0.1.0"
+description = "MIDI files, note maps and a pattern library in Python: translate drum maps, transform notes, index and search grooves — no DAW or plug-in needed"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Mike Farr" }]
+keywords = ["midi", "drums", "drum-map", "general-midi", "groove", "smf"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: MIDI",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pf-core~=0.22.0",
+    "mido~=1.3",
+]
+
+[project.urls]
+Repository = "https://github.com/phierceweb/groovebin"
+Changelog = "https://github.com/phierceweb/groovebin/blob/main/CHANGELOG.md"
+Issues = "https://github.com/phierceweb/groovebin/issues"
+
+[project.scripts]
+groovebin = "groovebin.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+groovebin = ["py.typed", "data/maps/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# every skip is listed: a skip that fires on a fresh clone proves nothing
+addopts = "-rs"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "B", "UP035"]
+ignore = ["E501", "B008", "B904"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]

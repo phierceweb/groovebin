@@ -1,0 +1,4 @@
+include LICENSE NOTICE README.md CHANGELOG.md
+# The suite reads docs/ and the repo's own markdown, so it runs from a repository checkout.
+prune tests
+global-exclude __pycache__ *.py[cod]

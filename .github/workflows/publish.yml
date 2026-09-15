@@ -1,0 +1,65 @@
+# On a v* tag: check the tag and CHANGELOG, test, build, then upload by PyPI Trusted Publishing
+# (project groovebin, owner phierceweb, repo groovebin, workflow publish.yml, environment pypi).
+# The upload waits for approval only if the `pypi` environment has a required reviewer.
+name: publish
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - name: verify tag matches package version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag v$TAG_VERSION != pyproject version $PKG_VERSION — bump pyproject (and CHANGELOG) before tagging"
+            exit 1
+          fi
+      - name: verify CHANGELOG has the release
+        run: |
+          grep -q "^## \[${GITHUB_REF_NAME#v}\]" CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no '## [${GITHUB_REF_NAME#v}]' entry"; exit 1; }
+      - run: python -m build
+      - run: twine check dist/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: python -m pf_core.guards
+      - run: pytest -q
+
+  publish:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
