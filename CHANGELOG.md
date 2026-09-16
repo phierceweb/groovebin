@@ -3,7 +3,23 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] — 2026-09-15
+
+### Added
+- `groovebin transform`: notes selected by position, pitch, velocity, length and channel (`--select`, read once
+  for the whole run), changed by `--op` set, add, mul, min, max, random, flip, quantize, crescendo, exp and
+  reverse, or by a `--preset`: humanize, fixed-velocity, velocity-limit, random-velocity, crescendo,
+  reverse-position, reverse-pitch, exp-velocity, fixed-length, max-length, min-length, half-speed,
+  double-speed, legato, staccato and swing; `--presets` lists them, `--seed` repeats a run. An operation writes
+  only the field it names, a position quantize snaps to the grid lines of the note's bar, and the run reports
+  same-pitch note pairs its result leaves nested and note-offs dropped on read, as `groovebin remap` does.
+- Library: `transforms` is a package — `select`, `apply`, `apply_all`, `humanize`, `position_ticks`, `stretch`,
+  `note_lengths`, `velocity_curve`, `swing`, and the preset table with `run`.
+
+### Fixed
+- A tick gap past the 268435455 a variable-length quantity can hold is refused on write, and a delta time of
+  more than four bytes is refused on read.
+- The nested-note report says "note pair(s)", which is what it counts.
 
 ## [0.1.0] — 2026-09-14
 

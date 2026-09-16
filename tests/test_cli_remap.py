@@ -132,7 +132,7 @@ def test_nested_overlaps_a_remap_creates_are_reported(tmp_path, capsys):
     source = mid(tmp_path, Part(480, (Note(0, 960, 10, 35, 90), Note(240, 240, 10, 36, 90))))
     rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2", "-o", tmp_path / "out.mid")
     assert rc == 0
-    assert "1 same-pitch note(s) now start inside a longer one and end before it" in text
+    assert "1 same-pitch note pair(s) now start inside a longer one and end before it" in text
 
 
 def test_a_track_with_notes_on_several_channels_still_needs_a_channel(tmp_path, capsys):

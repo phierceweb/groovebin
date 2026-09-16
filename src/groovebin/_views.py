@@ -13,6 +13,16 @@ def joined(items: list[object]) -> str:
     return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
 
 
+def nested_warning(count: int) -> str:
+    """The line a command prints when its output holds same-pitch notes a reader cannot pair back."""
+    return (f"{count} same-pitch note pair(s) now start inside a longer one and end before it: "
+            "a reader pairs note-offs first in, first out, so those lengths read back swapped")
+
+
+def orphan_warning(count: int) -> str:
+    return f"{count} note-off(s) with no note before them were dropped"
+
+
 def remap_report(*, notes: int, unmapped: Counter, src: str, dst: str, nested: int, orphans: int,
                  rule: str = "keep") -> list[str]:
     line = f"{notes - sum(unmapped.values())} of {notes} note(s) remapped {src} -> {dst}"
@@ -21,10 +31,9 @@ def remap_report(*, notes: int, unmapped: Counter, src: str, dst: str, nested: i
         line += f"; no {dst} counterpart, {'pitch kept' if rule == 'keep' else 'dropped'}: {kept}"
     lines = [line]
     if nested:
-        lines.append(f"{nested} same-pitch note(s) now start inside a longer one and end before it: "
-                     "a reader pairs note-offs first in, first out, so those lengths read back swapped")
+        lines.append(nested_warning(nested))
     if orphans:
-        lines.append(f"{orphans} note-off(s) with no note before them were dropped")
+        lines.append(orphan_warning(orphans))
     return lines
 
 
@@ -44,3 +53,27 @@ def listing(name: str, song: Song, tracks: list[int], map_name: str | None) -> l
                 line += f"  {stroke(map_name, n.pitch) or '-'}"
             lines.append(line)
     return lines
+
+
+def presets(items) -> list[str]:
+    width = max(len(p.name) for p in items)
+    out = []
+    for p in items:
+        if p.takes == "none":
+            value = ""
+        elif p.takes == "int?":
+            value = "  (=VALUE, optional)"
+        elif p.default is None:
+            value = "  (=VALUE, required)"
+        else:
+            shown = ",".join(f"{k}={v}" for k, v in zip(("pos", "vel", "len"), p.default, strict=True)) if p.takes == "humanize" \
+                else (f"{p.default[0]:.0%}:1/{p.default[1]}" if p.takes == "swing"
+                      else (f"{p.default[0]}..{p.default[1]}" if p.takes == "lo..hi" else f"{p.default:g}"))
+            value = f"  (=VALUE, default {shown})"
+        out.append(f"{p.name:{width}s}  {p.about}{value}")
+    return out
+
+
+def transform_report(number: int, name: str | None, selected: int, total: int, steps: list[str]) -> str:
+    label = f" {name!r}" if name else ""
+    return f"track {number}{label}: {selected} of {total} note(s) selected; {'; '.join(steps)}"

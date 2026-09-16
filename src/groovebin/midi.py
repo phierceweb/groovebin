@@ -8,6 +8,7 @@ import struct
 
 import mido
 
+from .events import MAX_VLQ
 from .song import END_OF_TRACK, Song, pair, unpair
 
 MAX_PPQ = 0x7FFF
@@ -69,11 +70,12 @@ class _Track:
 
     def vlq(self) -> int:
         value = 0
-        while True:
+        for _ in range(4):
             byte = self.take(1)[0]
             value = value << 7 | byte & 0x7F
             if not byte & 0x80:
                 return value
+        raise self.fail("a variable-length quantity runs past four bytes")
 
     def events(self) -> list[tuple[int, bytes]]:
         """Every event with its absolute tick. Running status survives meta and SysEx events,
@@ -147,9 +149,13 @@ def write(song: Song) -> bytes:
             raise ValueError(f"track {number}: an event at tick {messages[0][0]} is before the start of the file")
         track, now = mido.MidiTrack(), 0
         for tick, data in messages:
+            if tick - now > MAX_VLQ:
+                raise ValueError(f"track {number}: a gap of {tick - now} ticks is past the {MAX_VLQ} a file can hold")
             track.append(_message(data, tick - now))
             now = tick
         end = max(part.last_tick, now) - now
+        if end > MAX_VLQ:
+            raise ValueError(f"track {number}: a gap of {end} ticks is past the {MAX_VLQ} a file can hold")
         track.append(mido.MetaMessage.from_bytes(list(END_OF_TRACK)).copy(time=end))
         out.tracks.append(track)
     buffer = io.BytesIO()

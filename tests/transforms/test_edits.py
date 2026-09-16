@@ -132,3 +132,47 @@ def test_merge_refusals():
         merge(part(note(0)), part(note(0)), -1)
     with pytest.raises(ValueError, match="a part at PPQ 480 cannot merge into one at PPQ 960"):
         merge(part(note(0)), part(note(0), ppq=480), 0)
+
+
+from groovebin.transforms import note_lengths, stretch, swing, velocity_curve  # noqa: E402
+
+
+def test_stretch_scales_ticks_lengths_events_and_the_end():
+    p = part(note(0, length=241), note(961, length=3), control(1000), end=2000)
+    out = stretch(p, 0.5)
+    assert [(n.tick, n.length) for n in out.notes] == [(0, 121), (481, 1)]
+    assert (out.events[0].tick, out.end) == (500, 1000)
+    assert stretch(p, 2.0).notes[1].tick == 1922
+    assert [n.length for n in stretch(part(note(1, length=1), note(3, length=1)), 0.5).notes] == [1, 1]
+    for bad in (0.0, -1.0, math.inf):
+        with pytest.raises(ValueError, match="not a finite number above 0"):
+            stretch(p, bad)
+
+
+def test_note_lengths_takes_one_rule_and_holds_a_tick():
+    p = part(note(0, length=200), note(100, 62, length=200), note(100, 64, length=10), note(1000, length=50))
+    assert [n.length for n in note_lengths(p, percent=50).notes] == [100, 100, 5, 25]
+    assert [n.length for n in note_lengths(p, fixed=7).notes] == [7] * 4
+    assert [n.length for n in note_lengths(p, legato=1.0).notes] == [100, 900, 900, 50]
+    assert [n.length for n in note_lengths(p, frozenset({0}), legato=0.5).notes] == [50, 200, 10, 50]
+    assert [n.length for n in note_lengths(p, percent=0).notes] == [1] * 4
+    for kw, message in ((dict(), "exactly one"), (dict(percent=50, fixed=3), "exactly one"), (dict(fixed=0), "1 or more"),
+                        (dict(legato=0), "above 0"), (dict(percent=-1), "0 or more")):
+        with pytest.raises(ValueError, match=message):
+            note_lengths(p, **kw)
+
+
+def test_velocity_curve_maps_the_band_through_gamma():
+    p = part(*(note(k, velocity=v) for k, v in enumerate((1, 64, 127))))
+    assert [n.velocity for n in velocity_curve(p, floor=40, ceiling=100).notes] == [40, 70, 100]
+    assert [n.velocity for n in velocity_curve(p, gamma=2.0).notes] == [1, 33, 127]
+    assert [n.velocity for n in velocity_curve(p, frozenset({1}), floor=100, ceiling=100).notes] == [1, 100, 127]
+    for kw in (dict(floor=0), dict(floor=100, ceiling=90), dict(ceiling=128), dict(gamma=0)):
+        with pytest.raises(ValueError):
+            velocity_curve(p, **kw)
+
+
+def test_swing_is_a_quantize_with_the_odd_lines_late():
+    out = swing(part(note(250, 60), note(470, 62), note(250, 64, length=5)), 240, 0.6, FOUR_FOUR)
+    assert [(n.tick, n.pitch) for n in out.notes] == [(288, 60), (288, 64), (480, 62)]
+    assert swing(part(note(3840 + 250)), 240, 0.75, MeterMap(960, ((0, 3, 4),))).notes[0].tick == 2880 + 960 + 240 + 120

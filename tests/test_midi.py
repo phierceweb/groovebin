@@ -4,7 +4,7 @@ import struct
 import mido
 import pytest
 
-from groovebin.events import Event, Note
+from groovebin.events import MAX_VLQ, Event, Note
 from groovebin.midi import MidiFileError, read, write
 from groovebin.song import Part, Song
 
@@ -137,3 +137,18 @@ def test_a_meta_length_written_with_spare_bytes_reads_as_its_shortest_form():
     song = read(data)
     assert song.tracks[0].events == (Event(0, b"\xff\x58\x04\x04\x02\x18\x08"),)
     assert read(write(song)) == song
+
+
+def test_a_gap_past_what_a_file_can_hold_is_refused():
+    far = Part(480, (Note(MAX_VLQ + 1, 10, 1, 36, 100),))
+    with pytest.raises(ValueError, match=f"a gap of {MAX_VLQ + 1} ticks is past the {MAX_VLQ}"):
+        write(Song(480, 0, (far,)))
+    ok = Part(480, (Note(MAX_VLQ, 10, 1, 36, 100),))
+    assert read(write(Song(480, 0, (ok,)))).tracks[0].notes[-1].tick == MAX_VLQ
+
+
+def test_a_delta_time_of_more_than_four_bytes_is_refused():
+    body = b"\xff\xff\xff\xff\x00" + b"\x90\x24\x64" + b"\x00" + EOT
+    data = b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480) + b"MTrk" + struct.pack(">I", len(body)) + body
+    with pytest.raises(MidiFileError, match="runs past four bytes"):
+        read(data)

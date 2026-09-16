@@ -39,8 +39,39 @@ def build_parser() -> argparse.ArgumentParser:
     notes.add_argument("--map", choices=NAMES, help="name each note's stroke from this map")
     notes.add_argument("--track", type=int, action="append", help="list only this track, from 1 (repeatable)")
 
+    _transform(sub)
     _library(sub)
     return ap
+
+
+class _Step(argparse.Action):
+    """--op and --preset in command-line order, as (kind, text)."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        namespace.steps = [*(namespace.steps or []), (option_string.lstrip("-"), values)]
+
+
+def _transform(sub) -> None:
+    tr = sub.add_parser("transform", help="select notes by their fields and change them, as Logic's Transform window does",
+                        description="Each --op changes one field of every selected note; a --preset is a named set of "
+                                    "operations. Consecutive --op flags apply in one pass, reading each note as it was; "
+                                    "each --preset is its own pass. Notes outside the selection and every other event "
+                                    "are written back unchanged.")
+    tr.add_argument("input", nargs="?", help="the .mid file to read")
+    tr.add_argument("-o", "--out", help="the .mid file to write")
+    tr.add_argument("--track", type=int, action="append", help="transform only this track, from 1 (repeatable)")
+    tr.add_argument("--select", metavar="COND[,COND…]",
+                    help="which notes: FIELD=VALUE, FIELD=LO-HI, or FIELD<, <=, >, >=, != VALUE, over position (bars; a "
+                         "whole number is the whole bar), pitch, velocity, length (ticks, 240t or 1/16) and channel; "
+                         "default every note")
+    tr.add_argument("--op", dest="steps", action=_Step, metavar="OP:FIELD[=VALUE]",
+                    help="set, add, mul, min, max, random, flip, quantize, crescendo (LO..HI), exp, reverse (no value) "
+                         "on position, pitch, velocity, length or channel; exp is velocity only, and crescendo "
+                         "and reverse do not take channel (repeatable)")
+    tr.add_argument("--preset", dest="steps", action=_Step, metavar="NAME[=VALUE]", help="a preset by name (repeatable); --presets lists them")
+    tr.add_argument("--presets", action="store_true", help="list the presets and exit")
+    tr.add_argument("--seed", default="0", metavar="N|random", help="the seed for random and humanize (default 0, so a run repeats)")
+    tr.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
 
 def _db(parser: argparse.ArgumentParser) -> None:

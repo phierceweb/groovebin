@@ -14,6 +14,7 @@ CHANNEL_KINDS = {0xA0: "polytouch", 0xB0: "control", 0xC0: "program", 0xD0: "pre
 DATA_BYTES = {0xA0: 2, 0xB0: 2, 0xC0: 1, 0xD0: 1, 0xE0: 2}
 RANK = {"meta": 0, "sysex": 1, "program": 2, "control": 3, "note": 4, "polytouch": 5,
         "pressure": 6, "bend": 7}
+MAX_VLQ = 0x0FFFFFFF                     # a variable-length quantity is four bytes at most
 
 
 def _in_range(name: str, value: int, low: int, high: int) -> None:
