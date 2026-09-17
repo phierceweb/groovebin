@@ -132,7 +132,7 @@ def test_nested_overlaps_a_remap_creates_are_reported(tmp_path, capsys):
     source = mid(tmp_path, Part(480, (Note(0, 960, 10, 35, 90), Note(240, 240, 10, 36, 90))))
     rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2", "-o", tmp_path / "out.mid")
     assert rc == 0
-    assert "1 same-pitch note pair(s) now start inside a longer one and end before it" in text
+    assert "1 same-pitch note pair(s) start inside a longer one and end before it" in text
 
 
 def test_a_track_with_notes_on_several_channels_still_needs_a_channel(tmp_path, capsys):
@@ -144,3 +144,47 @@ def test_a_track_with_notes_on_several_channels_still_needs_a_channel(tmp_path, 
     assert "track 1 of in.mid holds notes on channels 1 and 10: say which to remap with --channel" in err
     assert run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2", "--track", 1, "--channel", 10,
                "-o", out)[0] == 0
+
+
+def test_a_kept_pitch_a_mapped_one_lands_on_is_named(tmp_path, capsys):
+    """Two pieces become one voice: 51 is remapped onto 60 while 60, having no counterpart, is kept
+    there. The unmapped line alone does not say they now share a pitch."""
+    source = mid(tmp_path, Part(480, notes(51, 60)))
+    out = tmp_path / "out.mid"
+    rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2", "-o", out)
+    assert rc == 0
+    assert "gm pitches 51, 60 all land on addictive-drums-2 60" in text
+    assert [n.pitch for n in read(out.read_bytes()).tracks[0].notes] == [60, 60]
+
+
+def test_dropping_the_unmapped_pitch_leaves_no_fold_to_report(tmp_path, capsys):
+    source = mid(tmp_path, Part(480, notes(51, 60)))
+    out = tmp_path / "out.mid"
+    rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2",
+                      "--unmapped", "drop", "-o", out)
+    assert rc == 0
+    assert "all land on" not in text
+
+
+def test_the_nested_warning_covers_a_track_the_remap_did_not_touch(tmp_path, capsys):
+    """The output carries every track's pairing, so the warning is the song's, not the selection's —
+    as the orphan warning already is."""
+    ambiguous = Part(480, (Note(0, 20, 10, 38, 100), Note(10, 20, 10, 38, 100)))
+    source = mid(tmp_path, Part(480, notes(36)), ambiguous)
+    assert read(source.read_bytes()).tracks[1].nested_ons == 1
+    out = tmp_path / "out.mid"
+    rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2",
+                      "--track", "1", "-o", out)
+    assert rc == 0
+    assert "1 same-pitch note pair(s)" in text
+
+
+def test_a_fold_spread_across_two_tracks_on_one_channel_is_named(tmp_path, capsys):
+    """A channel is one instrument however many tracks drive it, and a remap with no --channel covers
+    tracks that share one. So the fold is the song's, not a track's."""
+    source = mid(tmp_path, Part(480, notes(51)), Part(480, notes(60)))
+    out = tmp_path / "out.mid"
+    rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2", "-o", out)
+    assert rc == 0
+    assert "gm pitches 51, 60 all land on addictive-drums-2 60" in text
+    assert [[n.pitch for n in t.notes] for t in read(out.read_bytes()).tracks] == [[60], [60]]

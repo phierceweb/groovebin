@@ -26,6 +26,7 @@ class Part:
     events: tuple[Event, ...] = ()
     end: int | None = None
     orphan_offs: int = field(default=0, compare=False)
+    nested_ons: int = field(default=0, compare=False)     # note-offs that found two of their key open
 
     def __post_init__(self) -> None:
         if self.ppq < 1:
@@ -54,6 +55,8 @@ class Song:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tracks", tuple(self.tracks))
+        if self.ppq < 1:
+            raise ValueError(f"a PPQ of {self.ppq} is not 1 or more")
         if self.format not in (0, 1):
             raise ValueError(f"format {self.format} is not supported: only format 0 and format 1")
         if self.format == 0 and len(self.tracks) != 1:
@@ -65,11 +68,13 @@ class Song:
 
 def pair(messages: Iterable[tuple[int, bytes]], *, ppq: int) -> Part:
     """A track's messages, in file order, as a Part. Each note-off closes the earliest open note of
-    its channel and pitch; a note still open at the track's end closes there."""
+    its channel and pitch — first in, first out, as Logic Pro's own import pairs them; ``nested_ons``
+    counts the note-offs that found more than one open, where the file left the pairing ambiguous.
+    A note still open at the track's end closes there."""
     open_notes: dict[tuple[int, int], deque[tuple[int, int]]] = defaultdict(deque)
-    closed: list[tuple[int, int, int, int, int | None]] = []
+    closed: list[tuple[int, int, int, int, int, int | None]] = []
     events: list[Event] = []
-    end, orphans = 0, 0
+    end, orphans, nested = 0, 0, 0
     for tick, data in messages:
         end = max(end, tick)
         high = data[0] & 0xF0
@@ -82,6 +87,7 @@ def pair(messages: Iterable[tuple[int, bytes]], *, ppq: int) -> Part:
         if high == 0x90 and data[2]:
             open_notes[key].append((tick, data[2]))
         elif open_notes[key]:
+            nested += len(open_notes[key]) > 1
             start, velocity = open_notes[key].popleft()
             closed.append((start, tick, *key, velocity, data[2] if high == 0x80 else None))
         else:
@@ -90,7 +96,7 @@ def pair(messages: Iterable[tuple[int, bytes]], *, ppq: int) -> Part:
         closed += [(start, end, *key, velocity, None) for start, velocity in starts]
     notes = [Note(start, stop - start, channel + 1, pitch, velocity, off_velocity)
              for start, stop, channel, pitch, velocity, off_velocity in closed]
-    return Part(ppq, notes, events, end=end, orphan_offs=orphans)
+    return Part(ppq, notes, events, end=end, orphan_offs=orphans, nested_ons=nested)
 
 
 def unpair(part: Part) -> list[tuple[int, bytes]]:
@@ -124,11 +130,24 @@ def tempo_map(song: Song) -> TempoMap:
     return TempoMap(tuple((t, usec) for t, usec in points if usec))
 
 
+def _usable_meter(e: Event, ppq: int) -> bool:
+    """A time signature long enough to read, with a numerator and a bar ``ppq`` holds in whole ticks."""
+    return (len(e.payload) >= 2 and bool(e.payload[0]) and e.payload[1] <= MAX_DENOMINATOR_POWER
+            and (ppq * 4 * e.payload[0]) % (1 << e.payload[1]) == 0)
+
+
 def meter_map(song: Song) -> MeterMap:
-    """Time signatures from every track; one with a zero numerator or a denominator past 64 is skipped."""
+    """Time signatures from every track; one with a zero numerator, a denominator past 64, or a bar
+    the song's PPQ cannot hold in whole ticks is skipped — ``skipped_meters`` counts those."""
     changes = [(e.tick, e.payload[0], 1 << e.payload[1]) for e in _metas(song, TIME_SIGNATURE)
-               if len(e.payload) >= 2 and e.payload[0] and e.payload[1] <= MAX_DENOMINATOR_POWER]
+               if _usable_meter(e, song.ppq)]
     return MeterMap(song.ppq, tuple(changes))
+
+
+def skipped_meters(song: Song) -> int:
+    """How many of the song's time signatures ``meter_map`` leaves out. A caller that shows bar
+    positions says so: the bars it prints are counted in the meters that remain."""
+    return sum(not _usable_meter(e, song.ppq) for e in _metas(song, TIME_SIGNATURE))
 
 
 def rescale(part: Part, ppq: int) -> Part:

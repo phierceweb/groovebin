@@ -7,7 +7,7 @@ import pytest
 from mido import Message, MetaMessage, MidiFile, MidiTrack
 
 from groovebin.cli import main
-from groovebin.events import Note
+from groovebin.events import Event, Note
 from groovebin.midi import read, write
 from groovebin.song import Part, Song
 from groovebin.transforms import PRESETS, Operation, apply_all
@@ -143,7 +143,8 @@ def test_presets_are_listed(capsys):
     (["in.mid", "-o", "out.mid", "--preset", "fixed-velocity"], "needs a value"),
     (["in.mid", "-o", "out.mid", "--op", "grow:velocity=1"], "no operation 'grow'"),
     (["in.mid", "-o", "out.mid", "--op", "add:velocity=1", "--seed", "-1"], "--seed '-1'"),
-    (["in.mid", "-o", "out.mid", "--op", "add:position=-9999"], "before the part's start"),
+    (["in.mid", "-o", "out.mid", "--op", "add:position=-9999"], "before the track's start"),
+    (["in.mid", "-o", "out.mid", "--op", "add:velocity=1", "--seed", "\u00b2"], "--seed '\u00b2': 0 or more, or random"),
     (["in.mid", "-o", "out.mid", "--track", "3", "--op", "add:velocity=1"], "track 3 is not in"),
 ])
 def test_refusals_name_the_rule_and_write_nothing(tmp_path, capsys, monkeypatch, argv, message):
@@ -172,7 +173,7 @@ def test_notes_that_now_nest_inside_one_of_their_pitch_are_reported(tmp_path, ca
     out = tmp_path / "out.mid"
     rc, text, _ = run(capsys, "transform", src, "-o", out, "--op", "set:pitch=36")
     assert rc == 0, text
-    assert "1 same-pitch note pair(s) now start inside a longer one and end before it" in text
+    assert "1 same-pitch note pair(s) start inside a longer one and end before it" in text
 
 
 def test_an_operation_on_one_field_leaves_the_others_alone(tmp_path, capsys):
@@ -225,3 +226,56 @@ def test_note_offs_with_no_note_before_them_are_reported(tmp_path, capsys):
     src.write_bytes(b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480) + b"MTrk" + struct.pack(">I", len(body)) + body)
     rc, text, _ = run(capsys, "transform", src, "-o", tmp_path / "out.mid", "--op", "add:velocity=1")
     assert rc == 0 and "1 note-off(s) with no note before them were dropped" in text
+
+
+def test_the_nested_warning_covers_a_track_the_transform_did_not_touch(tmp_path, capsys):
+    """Every track is written back, so the input's ambiguous pairing is reported whether or not
+    --track selected it — as the orphan warning already is."""
+    ambiguous = Part(480, (Note(0, 20, 1, 38, 100), Note(10, 20, 1, 38, 100)))
+    path = tmp_path / "in.mid"
+    path.write_bytes(write(Song(480, 1, (Part(480, (Note(0, 120, 1, 36, 100),)), ambiguous))))
+    assert read(path.read_bytes()).tracks[1].nested_ons == 1
+    rc, text, _ = run(capsys, "transform", path, "--track", "1", "--op", "set:velocity=90",
+                      "-o", tmp_path / "out.mid")
+    assert rc == 0, text
+    assert "1 same-pitch note pair(s)" in text
+
+
+def test_a_refusal_the_command_line_prints_says_track_where_the_library_says_part(tmp_path, capsys):
+    src, out = build(tmp_path / "in.mid", NOTES), tmp_path / "out.mid"
+    rc, _text, err = run(capsys, "transform", src, "-o", out, "--select", "position=0-2",
+                         "--op", "set:velocity=90")
+    assert rc == 1
+    assert "where a track starts" in err
+    assert "part" not in err
+
+
+def test_a_skipped_time_signature_is_reported_by_transform(tmp_path, capsys):
+    sixty_fourth = Event(0, b"\xff\x58\x04\x01\x06\x18\x08")
+    path = tmp_path / "in.mid"
+    path.write_bytes(write(Song(120, 1, (Part(120, (Note(0, 12, 1, 36, 100),), (sixty_fourth,)),))))
+    rc, text, _ = run(capsys, "transform", path, "--op", "set:velocity=90", "-o", tmp_path / "out.mid")
+    assert rc == 0, text
+    assert "1 time signature(s) were skipped" in text
+
+
+def test_only_the_librarys_own_wording_is_rewritten_never_the_users_text(tmp_path, capsys):
+    """Only a `PartWording` refusal is rewritten. A message that quotes the user's own --select or
+    --op text back at them must come back exactly as they typed it."""
+    src, out = build(tmp_path / "in.mid", NOTES), tmp_path / "out.mid"
+    rc, _t, err = run(capsys, "transform", src, "-o", out, "--select", "the part's=3", "--op", "set:velocity=90")
+    assert rc == 1 and "the part's=3" in err and "the track's" not in err
+    rc, _t, err = run(capsys, "transform", src, "-o", out, "--op", "set:a part at=3")
+    assert rc == 1 and "a part at" in err and "a track at" not in err
+
+
+def test_a_path_holding_the_librarys_phrase_is_not_rewritten(tmp_path, capsys):
+    """The same rule for a file name: data, not wording."""
+    folder = tmp_path / "the part's mix"
+    folder.mkdir()
+    bad = folder / "a part at rest.mid"
+    bad.write_bytes(b"not a Standard MIDI File")
+    rc, _text, err = run(capsys, "notes", bad)
+    assert rc == 1
+    assert "a part at rest.mid" in err
+    assert "a track at rest" not in err

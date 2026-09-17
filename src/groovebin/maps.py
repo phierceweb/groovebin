@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from typing import Any
 from dataclasses import dataclass, replace
 from functools import cache
 from importlib.resources import files
@@ -31,7 +32,7 @@ UNMAPPED = ("keep", "drop")
 class DrumMap:
     name: str
     source: str
-    notes: Mapping[int, Mapping[str, object]]
+    notes: Mapping[int, Mapping[str, Any]]
     prefer: Mapping[str, int]
 
     def term(self, note: int) -> str | None:
@@ -98,6 +99,52 @@ def translate(note: int, src: str, dst: str) -> int | None:
             return found
         words.pop()
     return None
+
+
+def _translated_keys(part: Part) -> Iterator[tuple[int, int]]:
+    """Every (pitch, channel) a remap translates: a note's pitch, a polytouch event's key."""
+    for n in part.notes:
+        yield n.pitch, n.channel
+    for e in part.events:
+        if e.data[0] & 0xF0 == POLYTOUCH:
+            yield e.pitch, e.channel
+
+
+def landings(part: Part, src: str, dst: str, *, channels: Iterable[int] | None = None,
+             unmapped: str = "keep") -> dict[tuple[int, int], set[int]]:
+    """{(channel, destination pitch): the ``src`` pitches that land there} for one Part. A pitch with
+    no counterpart lands on itself while ``unmapped`` keeps it; dropped, it lands nowhere. A caller
+    covering several Parts merges these before asking `folds`, since a channel is one instrument
+    however many tracks drive it."""
+    check_unmapped(unmapped)
+    scope = None if channels is None else set(channels)
+    landed: dict[tuple[int, int], set[int]] = {}
+    for pitch, channel in _translated_keys(part):
+        if scope is not None and channel not in scope:
+            continue
+        new = translate(pitch, src, dst)
+        if new is None:
+            if unmapped == "drop":
+                continue
+            new = pitch
+        landed.setdefault((channel, new), set()).add(pitch)
+    return landed
+
+
+def folds(landed: Mapping[tuple[int, int], set[int]]) -> dict[int, list[int]]:
+    """The destination notes more than one source pitch lands on, on one channel: {target: [sources]}.
+    A remap says nothing about these on its own — three toms to one is still "3 of 3 remapped"."""
+    out: dict[int, set[int]] = {}
+    for (_channel, target), sources in landed.items():
+        if len(sources) > 1:
+            out.setdefault(target, set()).update(sources)
+    return {target: sorted(sources) for target, sources in sorted(out.items())}
+
+
+def collisions(part: Part, src: str, dst: str, *, channels: Iterable[int] | None = None,
+               unmapped: str = "keep") -> dict[int, list[int]]:
+    """`folds` of one Part's `landings`. One pitch on two channels is two voices and does not fold."""
+    return folds(landings(part, src, dst, channels=channels, unmapped=unmapped))
 
 
 def check_unmapped(rule: str) -> None:

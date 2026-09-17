@@ -248,3 +248,24 @@ def test_a_field_is_named_the_way_the_command_line_names_it():
     huge = parse_operation("mul", "position=1" + "0" * 308, ppq=960)
     with pytest.raises(ValueError, match="took position to inf"):
         apply_all(part(note(100)), None, [huge])
+
+
+def test_a_value_of_the_wrong_shape_is_refused_by_name():
+    from groovebin.events import Note
+    from groovebin.song import Part
+    from groovebin.transforms import Operation, apply, apply_all, operations, velocity_band
+    part = Part(96, (Note(0, 10, 1, 60, 64),))
+    with pytest.raises(ValueError, match="takes a number"):
+        apply(part, None, field="tick", op="quantize")
+    with pytest.raises(ValueError, match="takes a number"):
+        apply_all(part, None, [Operation("velocity", "set", None)])
+    with pytest.raises(ValueError, match="LO..HI pair"):
+        apply_all(part, None, [Operation("velocity", "crescendo", 64)])
+    with pytest.raises(ValueError, match="takes no value"):
+        apply_all(part, None, [Operation("tick", "reverse", 3)])
+    with pytest.raises(ValueError, match="LO..HI pair"):
+        velocity_band(5)
+    with pytest.raises(ValueError, match="LO..HI pair"):
+        operations("velocity-limit", 5)
+    with pytest.raises(ValueError, match="humanize takes"):
+        operations("humanize", 5)

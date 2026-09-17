@@ -1,12 +1,9 @@
-"""Standard MIDI Files to Songs and back. Tracks are read here, not through mido, which drops the delta
-time of a meta event type it does not know; writing goes through mido, every meta passed as raw bytes."""
+"""Standard MIDI Files to Songs and back, both written here. Every event keeps its delta time and its
+bytes, a meta type this module does not know included."""
 
 from __future__ import annotations
 
-import io
 import struct
-
-import mido
 
 from .events import MAX_VLQ
 from .song import END_OF_TRACK, Song, pair, unpair
@@ -78,8 +75,8 @@ class _Track:
         raise self.fail("a variable-length quantity runs past four bytes")
 
     def events(self) -> list[tuple[int, bytes]]:
-        """Every event with its absolute tick. Running status survives meta and SysEx events,
-        and an F7 escape reads as a SysEx event."""
+        """Every event with its absolute tick. Running status survives meta and SysEx events;
+        a SysEx packet and an F7 escape each read as the bytes the file holds."""
         out: list[tuple[int, bytes]] = []
         tick, status = 0, None
         while self.pos < len(self.body):
@@ -91,12 +88,11 @@ class _Track:
                 out.append((tick, bytes([0xFF, meta_type]) + _vlq_bytes(length) + self.take(length)))
             elif first in (0xF0, 0xF7):
                 payload = self.take(self.vlq())
-                if first == 0xF0 and not payload.endswith(b"\xf7"):
-                    raise self.fail(f"a SysEx event at tick {tick} does not end with 0xF7")
-                payload = payload.removesuffix(b"\xf7")
-                if bad := next((b for b in payload if b & 0x80), None):
-                    raise self.fail(f"SysEx data byte 0x{bad:02X} at tick {tick} is not below 0x80")
-                out.append((tick, b"\xf0" + payload + b"\xf7"))
+                if first == 0xF0:                     # a packet without its F7 continues in an escape
+                    body = payload[:-1] if payload.endswith(b"\xf7") else payload
+                    if bad := next((b for b in body if b & 0x80), None):
+                        raise self.fail(f"SysEx data byte 0x{bad:02X} at tick {tick} is not below 0x80")
+                out.append((tick, bytes([first]) + payload))
             else:
                 if first & 0x80:
                     if first >= 0xF0:
@@ -120,13 +116,6 @@ def read(data: bytes) -> Song:
     return Song(division, fmt, tuple(tracks))
 
 
-def _message(data: bytes, delta: int) -> mido.Message | mido.MetaMessage:
-    if data[0] == 0xFF:
-        payload_at = next(i for i in range(2, len(data)) if not data[i] & 0x80) + 1
-        return mido.UnknownMetaMessage(data[1], data[payload_at:], time=delta)
-    return mido.Message.from_bytes(list(data), time=delta)
-
-
 def _controls_before_programs(messages: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
     """A tick's program changes moved after its controllers, so a bank select applies to the program."""
     last_control = {tick: i for i, (tick, data) in enumerate(messages) if data[0] & 0xF0 == 0xB0}
@@ -139,25 +128,33 @@ def _controls_before_programs(messages: list[tuple[int, bytes]]) -> list[tuple[i
     return [message for _, message in sorted(enumerate(messages), key=position)]
 
 
+def _event_bytes(data: bytes) -> bytes:
+    """An event's bytes on the wire: a SysEx packet or escape takes its length after its status;
+    channel messages and meta events carry their own."""
+    if data[0] in (0xF0, 0xF7):
+        return bytes([data[0]]) + _vlq_bytes(len(data) - 1) + data[1:]
+    return data
+
+
 def write(song: Song) -> bytes:
-    if song.ppq > MAX_PPQ:
-        raise ValueError(f"a PPQ of {song.ppq} does not fit a file's 15-bit division")
-    out = mido.MidiFile(type=song.format, ticks_per_beat=song.ppq)
+    if not 1 <= song.ppq <= MAX_PPQ:
+        raise ValueError(f"a PPQ of {song.ppq} is not 1 to {MAX_PPQ}, a file's 15-bit division")
+    if not song.tracks:
+        raise ValueError("a song holds at least one track")
+    chunks = []
     for number, part in enumerate(song.tracks, 1):
         messages = _controls_before_programs(unpair(part))
         if messages and messages[0][0] < 0:
             raise ValueError(f"track {number}: an event at tick {messages[0][0]} is before the start of the file")
-        track, now = mido.MidiTrack(), 0
+        body, now = bytearray(), 0
         for tick, data in messages:
             if tick - now > MAX_VLQ:
                 raise ValueError(f"track {number}: a gap of {tick - now} ticks is past the {MAX_VLQ} a file can hold")
-            track.append(_message(data, tick - now))
+            body += _vlq_bytes(tick - now) + _event_bytes(data)
             now = tick
         end = max(part.last_tick, now) - now
         if end > MAX_VLQ:
             raise ValueError(f"track {number}: a gap of {end} ticks is past the {MAX_VLQ} a file can hold")
-        track.append(mido.MetaMessage.from_bytes(list(END_OF_TRACK)).copy(time=end))
-        out.tracks.append(track)
-    buffer = io.BytesIO()
-    out.save(file=buffer)
-    return buffer.getvalue()
+        body += _vlq_bytes(end) + END_OF_TRACK
+        chunks.append(b"MTrk" + struct.pack(">I", len(body)) + bytes(body))
+    return b"MThd" + struct.pack(">IHHH", 6, song.format, len(chunks), song.ppq) + b"".join(chunks)

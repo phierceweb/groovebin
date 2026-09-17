@@ -14,6 +14,11 @@ from ..events import Event, Note
 from ..song import Part
 from ..timing import MeterMap
 
+class PartWording(ValueError):
+    """A refusal whose wording names the Part. A consumer that says "track" rewrites these alone:
+    every other message may quote the user's own text back at them."""
+
+
 POLYTOUCH = 0xA0
 GRIDS = (1, 2, 4, 8, 16, 32, 64)
 Mask = frozenset[int]
@@ -34,7 +39,7 @@ def retimed(items: list[Note | Event], when: Callable[[int], int]) -> list[Note 
     ticks = [when(i.tick) for i in items]
     early = [new for i, new in zip(items, ticks, strict=True) if new < 0 <= i.tick]
     if early:
-        raise ValueError(f"an event would land {-min(early)} tick(s) before the part's start")
+        raise PartWording(f"an event would land {-min(early)} tick(s) before the part's start")
     return [replace(i, tick=new) for i, new in zip(items, ticks, strict=True)]
 
 
@@ -73,9 +78,12 @@ def shift(part: Part, ticks: int) -> Part:
 
 
 def delete(part: Part, pitch: int | None = None) -> tuple[Part, int]:
-    """The Part without its notes, or only those of ``pitch``, and how many went."""
+    """The Part without its notes, or only those of ``pitch``, and how many went; a deleted
+    key's polyphonic aftertouch goes with its notes."""
     kept = tuple(n for n in part.notes if pitch is not None and n.pitch != pitch)
-    return replace(part, notes=kept), len(part.notes) - len(kept)
+    events = tuple(e for e in part.events
+                   if e.data[0] & 0xF0 != POLYTOUCH or (pitch is not None and e.pitch != pitch))
+    return replace(part, notes=kept, events=events), len(part.notes) - len(kept)
 
 
 def grid_ticks(denominator: int, ppq: int) -> int:
@@ -103,7 +111,7 @@ def quantize(part: Part, grid: int, meters: MeterMap, *, start: int = 0) -> Part
     if grid <= 0:
         raise ValueError("a quantize grid is at least one tick")
     if meters.ppq != part.ppq:
-        raise ValueError(f"the meter map is at PPQ {meters.ppq} but the part is at PPQ {part.ppq}")
+        raise PartWording(f"the meter map is at PPQ {meters.ppq} but the part is at PPQ {part.ppq}")
     notes = retimed(list(part.notes), lambda t: snap(start + t, grid, meters) - start)
     return replace(part, notes=tuple(notes))
 
@@ -111,7 +119,7 @@ def quantize(part: Part, grid: int, meters: MeterMap, *, start: int = 0) -> Part
 def merge(dst: Part, src: Part, offset: int) -> Part:
     """``src`` moved by ``offset`` among ``dst``; where the canonical order ties, ``dst`` comes first."""
     if src.ppq != dst.ppq:
-        raise ValueError(f"a part at PPQ {src.ppq} cannot merge into one at PPQ {dst.ppq}")
+        raise PartWording(f"a part at PPQ {src.ppq} cannot merge into one at PPQ {dst.ppq}")
     notes = list(dst.notes) + retimed(list(src.notes), lambda t: t + offset)
     events = list(dst.events) + retimed(list(src.events), lambda t: t + offset)
     ends = [e for e in (dst.end, None if src.end is None else src.end + offset) if e is not None]
@@ -124,7 +132,7 @@ def masked(part: Part, mask: Mask | None) -> set[int]:
         return set(range(len(part.notes)))
     bad = [i for i in mask if not 0 <= i < len(part.notes)]
     if bad:
-        raise ValueError(f"note index {min(bad)} is not in the part's {len(part.notes)} note(s)")
+        raise PartWording(f"note index {min(bad)} is not in the part's {len(part.notes)} note(s)")
     return set(mask)
 
 

@@ -33,6 +33,20 @@ def csv_index(tmp_path):
     return source, db, build(db, csv_path=source, map_name="addictive-drums-2")
 
 
+def test_a_meter_change_after_bar_1_labels_the_row_with_bar_1s_meter(tmp_path):
+    from groovebin.events import Event
+    from groovebin.midi import write
+    from groovebin.song import Part, Song
+    six_eight_at_bar_2 = Event(3840, bytes([0xFF, 0x58, 4, 6, 3, 24, 8]))
+    notes = tuple(Note(t, 240, 10, 36, 100) for t in range(0, 7680, 480))
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "a.mid").write_bytes(write(Song(960, 1, (Part(960, notes, (six_eight_at_bar_2,), None),))))
+    db = tmp_path / "library.sqlite"
+    build(db, folder=tmp_path / "lib", map_name="gm")
+    (row,) = rows(db)
+    assert (row["meter"], json.loads(row["meters"])) == ("4/4", [[0, 4, 4], [3840, 6, 8]])
+
+
 def test_a_csv_index_counts_rows_and_keeps_the_csvs_columns_and_the_parsed_file(csv_index):
     _source, db, counts = csv_index
     assert counts == {"rows": 4, "parsed": 2, "failed": 1, "duplicates": 1}
@@ -190,3 +204,22 @@ def test_a_subfolder_that_cannot_be_listed_is_a_failed_row_and_an_unlistable_fol
     assert rows(db, "file = 'locked'")[0]["error"] == "not listed: Permission denied"
     assert [r["file"] for r in search(db, limit=None)] == ["a.mid"]
     assert not (tmp_path / "root.sqlite").exists()
+
+
+def test_a_file_whose_only_signature_the_ppq_cannot_hold_is_filed_with_no_meter(tmp_path):
+    """4/4 there is the meter map's fallback, not the file's. Recording it would file the pattern
+    under a meter it never held, where `search --meter 4/4` would find it."""
+    from groovebin.events import Event
+    from groovebin.midi import write
+    from groovebin.song import Part, Song
+    folder = tmp_path / "lib"
+    folder.mkdir()
+    sixty_fourth = Event(0, b"\xff\x58\x04\x01\x06\x18\x08")
+    (folder / "x.mid").write_bytes(write(Song(120, 1, (Part(120, (Note(0, 12, 10, 36, 100),), (sixty_fourth,)),))))
+    (folder / "y.mid").write_bytes(write(Song(120, 1, (Part(120, (Note(0, 12, 10, 36, 100),)),))))
+    db = tmp_path / "i.db"
+    build(db, folder=folder, map_name=None)
+    by_file = {Path(r["file"]).name: r["meter"] for r in rows(db)}
+    assert by_file["x.mid"] is None
+    assert by_file["y.mid"] == "4/4"                     # no signature at all: the format's own default
+    assert [r["file"] for r in search(db, meter="4/4")] == [r["file"] for r in rows(db, "file LIKE '%y.mid'")]

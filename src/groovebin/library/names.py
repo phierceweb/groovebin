@@ -15,7 +15,9 @@ ROLES = (("pre-chorus", r"pre[\s_-]?chorus"), ("intro", r"intro"), ("verse", r"v
 ROLE_WORDS = [(role, re.compile(rf"(?<![a-z])(?:{pattern})(?![a-z])", re.I)) for role, pattern in ROLES]
 FILL_WORD = re.compile(r"(?<![a-z])fills?(?![a-z])", re.I)
 TEMPO_HINT = re.compile(r"(\d+(?:\.\d+)?)\s*bpm(?![a-z])", re.I)
-METER_HINT = re.compile(r"(?<![\d.])(\d{1,2})\s*[:/-]\s*(\d{1,2})(?![\d.])")
+# No leading zero, and no third number joined on either side: a date (2024-08-16) is not a
+# meter, while "Rock 6-8-A" and "3/4-Fill" still carry one.
+METER_HINT = re.compile(r"(?<![\d.])(?<!\d[:/-])([1-9]\d?)\s*[:/-]\s*([1-9]\d?)(?![\d.])(?![:/-]\d)")
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,6 +4,8 @@ section planning and generation choose by.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import json
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
@@ -88,7 +90,7 @@ def pattern(row: dict) -> Pattern:
                    row.get("map"), row.get("role"), bool(row.get("is_fill")), row.get("tempo"))
 
 
-def repeated(notes, span: int, times: int, end: int | None = None) -> tuple[list[Note], int]:
+def repeated(notes: Iterable[Note], span: int, times: int, end: int | None = None) -> tuple[list[Note], int]:
     """``notes`` laid ``times`` back to back every ``span`` ticks -> (notes, dropped). A note at or past
     its copy's ``span``, or past ``end``, is dropped: it would sound over the next copy's start."""
     notes = list(notes)

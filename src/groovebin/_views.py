@@ -14,22 +14,33 @@ def joined(items: list[object]) -> str:
 
 
 def nested_warning(count: int) -> str:
-    """The line a command prints when its output holds same-pitch notes a reader cannot pair back."""
-    return (f"{count} same-pitch note pair(s) now start inside a longer one and end before it: "
-            "a reader pairs note-offs first in, first out, so those lengths read back swapped")
+    """The line a command prints when its input or output holds same-pitch notes a reader cannot
+    pair back with certainty."""
+    return (f"{count} same-pitch note pair(s) start inside a longer one and end before it: "
+            "a reader pairs note-offs first in, first out, so those lengths read as swapped")
 
 
 def orphan_warning(count: int) -> str:
     return f"{count} note-off(s) with no note before them were dropped"
 
 
+def meter_warning(count: int) -> str:
+    """The line a command that shows bar positions prints when the file holds a time signature the
+    meter map cannot use."""
+    return (f"{count} time signature(s) were skipped — too few bytes to read, a zero numerator, a "
+            "denominator past 64, or a bar this PPQ cannot hold in whole ticks: bars are counted in "
+            "the meters that remain")
+
+
 def remap_report(*, notes: int, unmapped: Counter, src: str, dst: str, nested: int, orphans: int,
-                 rule: str = "keep") -> list[str]:
+                 rule: str = "keep", folded: dict[int, list[int]] | None = None) -> list[str]:
     line = f"{notes - sum(unmapped.values())} of {notes} note(s) remapped {src} -> {dst}"
     if unmapped:
         kept = ", ".join(f"{pitch} x{count}" for pitch, count in sorted(unmapped.items()))
         line += f"; no {dst} counterpart, {'pitch kept' if rule == 'keep' else 'dropped'}: {kept}"
     lines = [line]
+    for target, sources in sorted((folded or {}).items()):
+        lines.append(f"{src} pitches {', '.join(map(str, sources))} all land on {dst} {target}")
     if nested:
         lines.append(nested_warning(nested))
     if orphans:
@@ -77,3 +88,14 @@ def presets(items) -> list[str]:
 def transform_report(number: int, name: str | None, selected: int, total: int, steps: list[str]) -> str:
     label = f" {name!r}" if name else ""
     return f"track {number}{label}: {selected} of {total} note(s) selected; {'; '.join(steps)}"
+
+
+# The library says "part"; the command line says "track".
+SPOKEN = (("the part's", "the track's"), ("the part is", "the track is"), ("a part at", "a track at"),
+          ("the whole part", "the whole track"), ("where a part starts", "where a track starts"))
+
+
+def spoken(text: str) -> str:
+    for inner, outer in SPOKEN:
+        text = text.replace(inner, outer)
+    return text

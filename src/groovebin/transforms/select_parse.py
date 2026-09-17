@@ -7,17 +7,17 @@ from __future__ import annotations
 import math
 import re
 
+from ..events import MAX_VLQ
 from .edits import grid_ticks
 from .select import ALIASES, FIELDS, OPS, Operation, Range
 
 CONDITION = re.compile(r"^(\w+)(!=|<=|>=|=|<|>)(.+)$")
 NUMBER = re.compile(r"^-?\d+(\.\d+)?$")
-MAX_VALUE = 0x0FFFFFFF                            # a Standard MIDI File's delta time is four VLQ bytes at most
 
 
 def _inside(value: int, text: str) -> int:
-    if abs(value) > MAX_VALUE:
-        raise ValueError(f"{text!r} is past {MAX_VALUE}, the largest value a file can hold")
+    if abs(value) > MAX_VLQ:
+        raise ValueError(f"{text!r} is past {MAX_VLQ}, the largest value a file can hold")
     return value
 
 

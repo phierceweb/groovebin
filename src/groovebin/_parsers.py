@@ -8,12 +8,14 @@ from pathlib import Path
 from pf_core.utils.env import resolve_str
 
 from . import __version__
+from .library.index import default_db as library_default_db
 from .maps import NAMES
 
 
 def default_db() -> Path:
-    """The pattern library index when --db is not given: under the user's cache folder."""
-    return Path(resolve_str(None, "XDG_CACHE_HOME", default="~/.cache")).expanduser() / "groovebin" / "library.sqlite"
+    """The pattern library index when --db is not given: the library's own path under the user's
+    cache folder, an empty ``XDG_CACHE_HOME`` read as unset."""
+    return library_default_db(resolve_str(None, "XDG_CACHE_HOME"))
 
 
 def build_parser() -> argparse.ArgumentParser:

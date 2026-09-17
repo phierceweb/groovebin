@@ -62,7 +62,6 @@ def test_a_meta_payload_past_127_bytes_reads_through_its_length_prefix():
     (b"\xc0\x05\x06", "0xC0 carries 1 data byte, not 2"),
     (b"\xb0\x07\x80", "data byte 0x80 is not below 0x80"),
     (b"\x07\x64", "0x07 is not a status byte"),
-    (b"\xf0\x7e\x7f", "a SysEx event ends with 0xF7"),
     (b"\xf0\x7e\x80\xf7", "SysEx data byte 0x80 is not below 0x80"),
     (b"\xff\x51\x05\x07\xa1\x20", "meta event 0x51 claims 5 bytes but holds 3"),
     (b"\xff\x80\x00", "meta type 0x80 is not below 0x80"),
@@ -92,3 +91,9 @@ def test_the_canonical_order_is_stable_for_ties_and_ignores_channel():
     a, b = Note(0, 10, 10, 60, 100), Note(0, 10, 1, 60, 50)
     assert ordered([first, second, a, b]) == [first, second, a, b]
     assert ordered([second, first, b, a]) == [second, first, b, a]
+
+
+def test_a_sysex_packet_without_its_terminator_and_an_escape_are_events():
+    assert Event(0, b"\xf0\x7e\x7f").kind == "sysex"
+    assert Event(0, b"\xf7\xf8").kind == "escape"
+    assert Event(0, b"\xf7").kind == "escape"

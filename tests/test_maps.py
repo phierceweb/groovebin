@@ -132,3 +132,78 @@ def test_a_family_is_every_note_whose_term_starts_with_the_word():
     assert ad2.family("kick") == (36,)
     assert ad2.family("snare") == (37, 38, 39, 40, 41, 43)
     assert drum_map("gm").family("snare") == (38, 40)
+
+
+def test_collisions_name_the_pitches_that_fold_together():
+    from groovebin.events import Note
+    from groovebin.maps import collisions, translate
+    from groovebin.song import Part
+    toms = [p for p in (41, 43, 45, 47, 48, 50) if translate(p, "gm", "drum-kit-designer") is not None]
+    part = Part(96, tuple(Note(k * 10, 5, 10, p, 100) for k, p in enumerate(toms)))
+    folded = collisions(part, "gm", "drum-kit-designer")
+    assert folded, "the General MIDI toms fold onto fewer Drum Kit Designer notes"
+    for target, sources in folded.items():
+        assert len(sources) > 1
+        assert all(translate(p, "gm", "drum-kit-designer") == target for p in sources)
+    assert collisions(Part(96, (Note(0, 5, 10, 36, 100),)), "gm", "drum-kit-designer") == {}
+
+
+def test_collisions_name_a_kept_pitch_that_a_mapped_one_lands_on():
+    """`--unmapped keep` leaves a pitch with no counterpart at its own value, where a mapped pitch
+    can land on it. Dropped, it cannot."""
+    from groovebin.events import Note
+    from groovebin.maps import collisions, translate
+    from groovebin.song import Part
+    kept = next(p for p in range(128) if translate(p, "gm", "addictive-drums-2") is None
+                and any(translate(q, "gm", "addictive-drums-2") == p for q in range(128)))
+    onto = next(q for q in range(128) if translate(q, "gm", "addictive-drums-2") == kept)
+    part = Part(96, (Note(0, 5, 10, onto, 100), Note(10, 5, 10, kept, 100)))
+    assert collisions(part, "gm", "addictive-drums-2") == {kept: sorted({kept, onto})}
+    assert collisions(part, "gm", "addictive-drums-2", unmapped="drop") == {}
+
+
+def test_collisions_see_a_polytouch_key_the_remap_would_translate():
+    from groovebin.events import Event, Note
+    from groovebin.maps import collisions, translate
+    from groovebin.song import Part
+    a, b = 35, 36
+    target = translate(a, "gm", "addictive-drums-2")
+    assert target == translate(b, "gm", "addictive-drums-2")
+    part = Part(96, (Note(0, 5, 10, a, 100),), (Event(0, bytes([0xA9, b, 64])),))
+    assert collisions(part, "gm", "addictive-drums-2") == {target: [a, b]}
+    assert collisions(part, "gm", "addictive-drums-2", channels=[1]) == {}
+
+
+def test_collisions_refuse_an_unmapped_rule_that_is_not_one():
+    import pytest
+    from groovebin.maps import collisions
+    from groovebin.song import Part
+    with pytest.raises(ValueError, match="kept or dropped"):
+        collisions(Part(96), "gm", "addictive-drums-2", unmapped="delete")
+
+
+def test_collisions_do_not_fold_pitches_that_meet_only_across_channels():
+    """One pitch on two channels is two voices; they do not collide. Only pitches that land together
+    on one channel fold."""
+    from groovebin.events import Note
+    from groovebin.maps import collisions
+    from groovebin.song import Part
+    apart = Part(96, (Note(0, 5, 1, 51, 100), Note(10, 5, 2, 60, 100)))
+    assert collisions(apart, "gm", "addictive-drums-2", channels=[1, 2]) == {}
+    assert collisions(apart, "gm", "addictive-drums-2") == {}
+    together = Part(96, (Note(0, 5, 1, 51, 100), Note(10, 5, 1, 60, 100)))
+    assert collisions(together, "gm", "addictive-drums-2") == {60: [51, 60]}
+
+
+def test_landings_key_on_channel_so_a_caller_can_merge_tracks():
+    from groovebin.events import Note
+    from groovebin.maps import folds, landings
+    from groovebin.song import Part
+    one = Part(96, (Note(0, 5, 10, 51, 100),))
+    two = Part(96, (Note(0, 5, 10, 60, 100),))
+    merged: dict[tuple[int, int], set[int]] = {}
+    for part in (one, two):
+        for key, sources in landings(part, "gm", "addictive-drums-2").items():
+            merged.setdefault(key, set()).update(sources)
+    assert folds(merged) == {60: [51, 60]}
+    assert folds(landings(one, "gm", "addictive-drums-2")) == {}     # neither track folds alone

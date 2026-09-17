@@ -22,6 +22,13 @@ def ids(db, **filters):
     return sorted(r["variant"] for r in search(db, **filters))
 
 
+def test_a_limit_past_what_sqlite_counts_is_refused_before_the_query(db):
+    with pytest.raises(ValueError, match="not 0 to"):
+        search(db, limit=2**63)
+    with pytest.raises(ValueError, match="not 0 to"):
+        search(db, limit=-1)
+
+
 def test_every_filter(db):
     cases = {"category": ("rock", ["Verse 01"]), "meter": ("3/4", ["Chorus 1", "Fills 02"]),
              "tempo": ("100-130", ["Chorus 1", "Fills 02"]), "swing": ("<0.55", ["Verse 01"]),
@@ -32,7 +39,7 @@ def test_every_filter(db):
     assert (ids(db, fill=True), ids(db, beat=True)) == (["Fills 02"], ["Chorus 1", "Verse 01"])
     assert (ids(db, tempo="98"), ids(db, tempo="97"), ids(db, tempo=">=125")) == (["Verse 01"], [], ["Chorus 1", "Fills 02"])
     assert len(search(db, limit=1)) == 1
-    with pytest.raises(ValueError, match="a limit of -1 rows is below 0"):
+    with pytest.raises(ValueError, match="a limit of -1 rows is not 0 to"):
         search(db, limit=-1)
     assert {"role", "map"} <= set(search(db)[0])
 

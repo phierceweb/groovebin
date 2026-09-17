@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "groovebin"
-version = "0.2.0"
+version = "0.3.0"
 description = "MIDI files, note maps and a pattern library in Python: translate drum maps, transform notes, index and search grooves — no DAW or plug-in needed"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,7 +23,6 @@ classifiers = [
 ]
 dependencies = [
     "pf-core~=0.22.0",
-    "mido~=1.3",
 ]
 
 [project.urls]
@@ -35,7 +34,7 @@ Issues = "https://github.com/phierceweb/groovebin/issues"
 groovebin = "groovebin.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "mido~=1.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

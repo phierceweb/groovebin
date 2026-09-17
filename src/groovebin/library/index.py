@@ -22,9 +22,18 @@ from pathlib import Path, PurePosixPath
 from ..events import Note
 from ..maps import drum_map
 from ..midi import read
-from ..song import merged, meter_map, rescale, tempo_map
+from ..song import merged, meter_map, rescale, skipped_meters, tempo_map
 from ..timing import MeterMap
 from .names import describe, role_of
+
+DEFAULT_CACHE = "~/.cache"
+
+
+def default_db(cache_home: str | None = None) -> Path:
+    """The pattern library index when none is named: ``groovebin/library.sqlite`` under
+    ``cache_home`` — the caller's ``$XDG_CACHE_HOME`` — or under ``~/.cache`` when that is None or
+    empty. The library reads no environment itself; a consumer passes the variable in."""
+    return Path(cache_home or DEFAULT_CACHE).expanduser() / "groovebin" / "library.sqlite"
 
 PPQ = 960
 SCHEMA = 2
@@ -108,7 +117,9 @@ def _parse(data: bytes, meter_hint: tuple[int, int] | None) -> tuple[dict, dict]
     histogram = dict(sorted(Counter(n.pitch for n in part.notes).items()))
     _, num, den = meters.changes[0]
     tempos = tempo_map(song)
-    own = {"meter": None if hinted else f"{num}/{den}",
+    # 4/4 here is the map's fallback, not the file's: nothing usable was read
+    unknown = hinted or (meters.defaulted and skipped_meters(song) > 0)
+    own = {"meter": None if unknown else f"{num}/{den}",
            "tempo": None if tempos.defaulted else round(tempos.bpm(tempos.points[0][0]), 6)}
     return {"ppq": song.ppq, "bars": bars, "meters": json.dumps(scaled), "histogram": json.dumps(histogram),
             "notes": packed, "error": None}, own

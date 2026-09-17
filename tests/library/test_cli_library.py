@@ -65,3 +65,11 @@ def test_the_default_index_is_in_the_user_cache(monkeypatch):
     assert str(default_db()) == "/cache-root/groovebin/library.sqlite"
     monkeypatch.delenv("XDG_CACHE_HOME")
     assert str(default_db()).endswith("/.cache/groovebin/library.sqlite")
+
+
+def test_an_empty_cache_variable_reads_as_unset(monkeypatch):
+    from groovebin.library import default_db as library_default
+    monkeypatch.setenv("XDG_CACHE_HOME", "")
+    assert str(default_db()).endswith("/.cache/groovebin/library.sqlite")
+    assert library_default("") == default_db()
+    assert str(library_default("/cache-root")) == "/cache-root/groovebin/library.sqlite"

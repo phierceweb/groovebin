@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 
 from ..song import Part
 from ..timing import MeterMap
-from .edits import Mask, masked, rounded, snap
+from .edits import Mask, PartWording, masked, rounded, snap
 
 FIELDS = ("tick", "pitch", "velocity", "length", "channel")
 ALIASES = {"position": "tick"}
@@ -43,8 +43,14 @@ class Operation:
     value: object = None
 
 
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def velocity_band(value: tuple[int, int]) -> tuple[int, int]:
     """A ``LO..HI`` velocity pair, each inside 1-127; HI below LO is a ramp downwards, not an error."""
+    if not (isinstance(value, (tuple, list)) and len(value) == 2 and all(_is_number(v) for v in value)):
+        raise ValueError(f"a velocity band is a LO..HI pair, not {value!r}")
     if not all(1 <= v <= 127 for v in value):
         raise ValueError(f"a velocity band of {value[0]}..{value[1]} is not inside 1..127")
     return value
@@ -58,7 +64,7 @@ def position_ticks(rng: Range, meters: MeterMap, *, start: int = 0) -> Range:
 
     for bound in (rng.lo, rng.hi):
         if bound is not None and bound < 1:
-            raise ValueError(f"bar {bound:g} is before bar 1, where a part starts")
+            raise PartWording(f"bar {bound:g} is before bar 1, where a part starts")
     lo, lo_open = rng.lo, rng.lo_open
     if lo is not None:
         lo = (meters.bar_line(int(lo) + 1) if lo_open else meters.bar_line(int(lo))) - start if whole(lo) else meters.tick(lo) - start
@@ -92,9 +98,17 @@ def _held(field: str, value: float) -> int:
 
 
 def _checked(o: Operation) -> None:
-    """The refusals no note is needed for: which field an operation takes, and its value's range."""
+    """The refusals no note is needed for: which field an operation takes, and its value's shape and range."""
     if o.op not in OPS or o.field not in FIELDS:
         raise ValueError(f"no operation {o.op} on {o.field}")
+    if o.op == "reverse":
+        if o.value is not None:
+            raise ValueError("reverse takes no value")
+    elif o.op == "crescendo":
+        if not (isinstance(o.value, (tuple, list)) and len(o.value) == 2 and all(_is_number(v) for v in o.value)):
+            raise ValueError(f"crescendo takes a LO..HI pair, not {o.value!r}")
+    elif not _is_number(o.value):
+        raise ValueError(f"{o.op} {o.field} takes a number, not {o.value!r}")
     if o.op in ("crescendo", "reverse") and o.field == "channel":
         raise ValueError(f"{o.op} {'ramps' if o.op == 'crescendo' else 'mirrors'} "
                          "position, pitch, velocity or length, not channel")
@@ -140,7 +154,7 @@ def _operated(o: Operation, x: float, tick: int, span: dict[str, tuple[int, int]
     return lo + hi - x
 
 
-def apply_all(part: Part, mask: Mask, operations: list[Operation], *, seed: int | random.Random = 0,
+def apply_all(part: Part, mask: Mask | None, operations: list[Operation], *, seed: int | random.Random = 0,
               meters: MeterMap | None = None, start: int = 0) -> Part:
     """Every operation on every selected note in one pass, each reading the note as it was (a second
     operation on one field reads the first's result); with no note selected the part comes back as
@@ -151,7 +165,7 @@ def apply_all(part: Part, mask: Mask, operations: list[Operation], *, seed: int 
     for o in operations:
         _checked(o)
     if meters is not None and meters.ppq != part.ppq:
-        raise ValueError(f"the meter map is at PPQ {meters.ppq} but the part is at PPQ {part.ppq}")
+        raise PartWording(f"the meter map is at PPQ {meters.ppq} but the part is at PPQ {part.ppq}")
     chosen = sorted(masked(part, mask))
     if not chosen or not operations:
         return part
@@ -175,11 +189,11 @@ def apply_all(part: Part, mask: Mask, operations: list[Operation], *, seed: int 
         if settled < 0 <= n.tick:
             early.append(settled)
     if early:
-        raise ValueError(f"a note would land {-min(early)} tick(s) before the part's start")
+        raise PartWording(f"a note would land {-min(early)} tick(s) before the part's start")
     return replace(part, notes=tuple(notes))
 
 
-def apply(part: Part, mask: Mask, *, field: str, op: str, value: object = None, seed: int | random.Random = 0,
+def apply(part: Part, mask: Mask | None, *, field: str, op: str, value: object = None, seed: int | random.Random = 0,
           meters: MeterMap | None = None, start: int = 0) -> Part:
     """One operation on the selected notes; see `apply_all`."""
     return apply_all(part, mask, [Operation(field, op, value)], seed=seed, meters=meters, start=start)

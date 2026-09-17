@@ -5,9 +5,11 @@ inside the repo and never into `.ai/`."""
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 from pathlib import Path
 
+from groovebin._views import spoken
 from groovebin.cli import build_parser
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,3 +176,40 @@ def test_links_are_checked(tmp_path):
         "README.md: ../outside.md resolves outside the repository",
         f"README.md: {REPO_BLOB}docs/gone.md does not exist",
     ]
+
+
+LIBRARY = ROOT / "src" / "groovebin"
+BOUNDARY = {"cli.py", "_parsers.py", "_views.py", "_views_library.py"}
+PART_WORD = re.compile(r"(?<![a-z])part(?![a-z])", re.I)
+
+
+def part_wording(root: Path = LIBRARY) -> list[tuple[str, str, str]]:
+    """(where, exception raised, message) for every string the library raises that holds "part"."""
+    found = []
+    for path in sorted(root.rglob("*.py")):
+        if path.name in BOUNDARY:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for raised in (n for n in ast.walk(tree) if isinstance(n, ast.Raise)):
+            call = raised.exc
+            name = getattr(getattr(call, "func", None), "id", None) or getattr(call, "id", "") or ""
+            for node in ast.walk(raised):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and PART_WORD.search(node.value):
+                    found.append((f"{path.relative_to(root)}:{node.lineno}", name, node.value))
+    return found
+
+
+def test_the_command_line_never_repeats_the_librarys_word_for_a_track():
+    """The library says "part", the command line says "track". Every library message
+    holding the word is raised as `PartWording`, which is the only thing the boundary rewrites, and
+    every one of them is actually covered by a SPOKEN pair."""
+    unmarked = [f"{where}: raises {name or '?'} — {text.strip()}"
+                for where, name, text in part_wording() if name != "PartWording"]
+    assert not unmarked, "raise these as PartWording so the boundary can say 'track':\n" + "\n".join(unmarked)
+    uncovered = [f"{where}: {text.strip()}" for where, _name, text in part_wording() if spoken(text) == text]
+    assert not uncovered, "give each of these a SPOKEN pair in _views.py:\n" + "\n".join(uncovered)
+
+
+def test_the_track_wording_check_finds_one(tmp_path):
+    (tmp_path / "m.py").write_text('def f():\n    raise ValueError("the part is late")\n')
+    assert [(n, w) for _where, n, w in part_wording(tmp_path)] == [("ValueError", "the part is late")]

@@ -81,12 +81,30 @@ def test_a_meta_event_of_any_type_keeps_its_tick_and_bytes():
     assert read(write(read(data))) == read(data)
 
 
-def test_running_status_survives_a_meta_event_and_an_escape_reads_as_sysex():
+def test_an_escape_a_split_sysex_and_a_status_in_an_escape_survive_read_and_write():
+    """An F7 escape stays an escape (MIDI clock inside it included), and a SysEx split into an F0
+    packet plus an F7 continuation reads as its two packets; the file comes back byte for byte."""
+    data = smf(0, 96, track((0, b"\xf7\x01\xf8"), (0, b"\xf0\x03\x7e\x00\x01"), (5, b"\xf7\x02\x02\xf7"),
+                            (0, b"\x90\x3c\x40"), (10, b"\x80\x3c\x00"), (0, EOT)))
+    part = read(data).tracks[0]
+    assert part.events == (Event(0, b"\xf7\xf8"), Event(0, b"\xf0\x7e\x00\x01"), Event(5, b"\xf7\x02\xf7"))
+    assert [e.kind for e in part.events] == ["escape", "sysex", "escape"]
+    assert write(read(data)) == data
+
+
+def test_write_refuses_a_song_it_could_not_read_back():
+    with pytest.raises(ValueError, match="at least one track"):
+        write(Song(96, 1, ()))
+    with pytest.raises(ValueError, match="not 1 or more"):
+        Song(-5, 1, ())
+
+
+def test_running_status_survives_a_meta_event_and_an_escape_reads_as_an_escape():
     data = smf(0, 96, track((0, b"\x90\x3c\x40"), (0, b"\xff\x06\x01A"), (10, b"\x3c\x00"),
                             (0, b"\xf7\x02\x01\x02"), (0, EOT)))
     part = read(data).tracks[0]
     assert part.notes == (Note(0, 10, 1, 60, 64),)
-    assert part.events == (Event(0, b"\xff\x06\x01A"), Event(10, b"\xf0\x01\x02\xf7"))
+    assert part.events == (Event(0, b"\xff\x06\x01A"), Event(10, b"\xf7\x01\x02"))
 
 
 def test_chunks_that_are_not_tracks_are_skipped():
@@ -106,9 +124,7 @@ def test_chunks_that_are_not_tracks_are_skipped():
     (smf(0, 96, track((0, b"\x99\x24\x90"), (0, EOT))), "track 1: data byte 0x90 at tick 0 is not below 0x80"),
     (smf(0, 96, track((7, b"\x24\x40"), (0, EOT))), "track 1: data byte 0x24 at tick 7 has no running status"),
     (smf(1, 96, track((0, EOT)), track((0, b"\xf0\x10\x01\x02"))), "track 2 ends inside an event"),
-    (smf(0, 96, track((0, b"\xf0\x02\x01\x02"), (0, EOT))), "track 1: a SysEx event at tick 0 does not end with 0xF7"),
     (smf(0, 96, track((4, b"\xf0\x03\x01\x90\xf7"), (0, EOT))), "track 1: SysEx data byte 0x90 at tick 4 is not below 0x80"),
-    (smf(0, 96, track((0, b"\xf7\x01\xfa"), (0, EOT))), "track 1: SysEx data byte 0xFA at tick 0 is not below 0x80"),
     (smf(0, 96, track((3, b"\xf1\x00"), (0, EOT))), "track 1: status 0xF1 at tick 3 is not an event a file holds"),
     (smf(0, 96, track((0, b"\x90\x3c"))), "track 1 ends inside an event"),
 ])
@@ -128,7 +144,7 @@ def test_write_refuses_a_tick_before_the_start_of_the_file():
 
 
 def test_write_refuses_a_ppq_a_file_cannot_hold():
-    with pytest.raises(ValueError, match="a PPQ of 32768 does not fit a file's 15-bit division"):
+    with pytest.raises(ValueError, match="a PPQ of 32768 is not 1 to 32767, a file's 15-bit division"):
         write(Song(32768, 0, (Part(32768),)))
 
 

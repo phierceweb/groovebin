@@ -54,16 +54,25 @@ Notes or polyphonic aftertouch on more than one channel are refused unless `--ch
 translate, so a drum map never rewrites a bass or keys part; `--track` alone is enough when the named
 tracks use one channel. With both, only the named channels on the named tracks change.
 
-The report names what it could not translate, and says when two notes of one pitch now overlap so
-that one starts inside the other and ends before it (a many-to-one translation can do that): a
-reader closes the earlier note first, so those two lengths read back swapped.
+The report names what it could not translate, and names each destination note that more than one source
+pitch lands on — including a kept pitch a translated one arrives at, which `--unmapped drop` avoids.
+A channel is one instrument however many tracks drive it, so pitches that meet on one channel fold even
+from different tracks; the same pitch on two channels is two voices and does not. It says when two notes of one pitch now overlap so that one starts inside the other and ends
+before it (a many-to-one translation can do that): a reader closes the earlier note first, so those
+two lengths read back swapped. It also says how many note-offs with no note before them the file
+dropped on read. Those last two count the whole file, not just the tracks `--track` named: every
+track is written back.
 
 ### groovebin notes
 
     groovebin notes IN.mid --map drum-kit-designer
 
 Lists the file's format, PPQ, starting tempo and meter, then each track's notes with bar position,
-channel, pitch, velocity and length.
+channel, pitch, velocity and length. A time signature the file's PPQ cannot hold in whole ticks, or one
+too short to read, or one with a zero numerator or a denominator past 64, cannot be counted in: the
+listing says how many were skipped, and bars follow the meters that remain. The lengths listed are the
+ones first-in-first-out pairing chose: where the file left a same-pitch pairing open, or dropped a
+note-off with no note before it, the listing says so, as `groovebin remap` does.
 
 | Flag | |
 |---|---|
@@ -85,7 +94,9 @@ reads the first's result); each `--preset` is its own pass. A field an operation
 pitch 0–127, velocity 1–127, channel 1–16, a length of at least one tick — and a note that would move before
 the track's start is refused. If the result leaves notes of one pitch nested inside one another, the run says
 so: a reader pairs note-offs first in, first out, so those lengths read back swapped. It also says how many
-note-offs with no note before them the file dropped on read, as `groovebin remap` does.
+note-offs with no note before them the file dropped on read, as `groovebin remap` does, and how many time
+signatures were skipped, as `groovebin notes` does. All three count the whole file, not just the tracks
+`--track` named.
 
 A condition is `FIELD=VALUE`, `FIELD=LO-HI`, or `FIELD` with `<`, `<=`, `>`, `>=` or `!=` and a value; several are
 joined by commas and must all hold. The fields: `position` in bars, where a whole number means the whole bar
@@ -243,7 +254,7 @@ not always reversible: several Addictive Drums 2 snare strokes become one GM sna
 
 Reading a file and writing it back keeps every note (start, length, channel, pitch, velocity and
 note-off velocity), every other event at its tick, and each track's end. Events of different
-kinds at one tick are written in a fixed order (controllers before a program change, so a bank select
-applies to it), a note-off with no note before it is dropped, and an
-F7 escape is written as a SysEx event (`F0 … F7`). A SysEx split into packets, or one holding a data
-byte of 0x80 or more, is refused.
+kinds at one tick are written in a fixed order (controllers before a program change, so a bank
+select applies to it), and a note-off with no note before it is dropped. An F7 escape is kept as an
+escape and written back as one, and a SysEx split into packets is read as its packets and written
+back the same way; a SysEx holding a data byte of 0x80 or more is refused.

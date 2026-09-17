@@ -23,11 +23,11 @@ from .library.generate import load_pool, parse_meter, phrase, phrase_song
 from .library.index import build
 from .library.search import get, search
 from .library.show import show
-from .maps import remap, stroke
+from .maps import folds, landings, remap, stroke
 from .midi import read, write
-from .song import Song, meter_map, nested_overlaps
-from .transforms import (BY_NAME, PRESETS, WHOLE_PART, apply_all, parse_operation, parse_select, parse_value, position_ticks,
-                         run, select)
+from .song import Song, meter_map, nested_overlaps, skipped_meters
+from .transforms import (BY_NAME, PRESETS, WHOLE_PART, PartWording, apply_all, parse_operation, parse_select,
+                         parse_value, position_ticks, run, select)
 
 
 def _read(path: str) -> Song:
@@ -86,17 +86,23 @@ def cmd_remap(args: argparse.Namespace) -> int:
     channels = set(args.channel) if args.channel else None
     if channels is None:
         refuse_mixed_channels(song, indices, name, tracks_named=args.track is not None)
-    tracks, unmapped, count, nested = list(song.tracks), Counter(), 0, 0
+    tracks, unmapped, count = list(song.tracks), Counter(), 0
+    nested = sum(t.nested_ons for t in song.tracks)     # the input's ambiguity, whichever track it is on
+    landed: dict[tuple[int, int], set[int]] = {}
     for i in indices:
         new, missing = remap(tracks[i], args.src, args.dst, channels=channels, unmapped=args.unmapped)
         count += sum(1 for n in tracks[i].notes if channels is None or n.channel in channels)
         unmapped += missing
         nested += len(nested_overlaps(new))
+        for key, sources in landings(tracks[i], args.src, args.dst, channels=channels,
+                                     unmapped=args.unmapped).items():
+            landed.setdefault(key, set()).update(sources)
         tracks[i] = new
     atomic_write_bytes(args.out, write(replace(song, tracks=tuple(tracks))))
     orphans = sum(t.orphan_offs for t in song.tracks)
     for line in _views.remap_report(notes=count, unmapped=unmapped, src=args.src, dst=args.dst,
-                                    nested=nested, orphans=orphans, rule=args.unmapped):
+                                    nested=nested, orphans=orphans, rule=args.unmapped,
+                                    folded=folds(landed)):
         print(line)
     print(f"out : {args.out}")
     return 0
@@ -110,6 +116,12 @@ def cmd_notes(args: argparse.Namespace) -> int:
     except ValueError as e:
         raise ValueError(f"{name}: {e}") from e
     print("\n".join(lines))
+    if nested := sum(t.nested_ons for t in song.tracks):
+        print(_views.nested_warning(nested))
+    if orphans := sum(t.orphan_offs for t in song.tracks):
+        print(_views.orphan_warning(orphans))
+    if skipped := skipped_meters(song):
+        print(_views.meter_warning(skipped))
     return 0
 
 
@@ -198,13 +210,13 @@ def cmd_transform(args: argparse.Namespace) -> int:
         raise InvalidInputError(f"{whole[0]} takes the whole track; drop --select")
     if args.seed == "random":
         seed = secrets.randbelow(2**32)
-    elif not args.seed.isdigit():
+    elif not args.seed.isdecimal():
         raise InvalidInputError(f"--seed {args.seed!r}: 0 or more, or random")
     else:
         seed = int(args.seed)
     rng, meters, tracks, lines = random.Random(seed), meter_map(song), list(song.tracks), []
     conditions = {f: (position_ticks(r, meters) if f == "tick" else r) for f, r in ranges.items()}
-    nested = 0
+    nested = sum(t.nested_ons for t in song.tracks)     # the input's ambiguity, whichever track it is on
     for i in indices:
         part = replace(tracks[i], notes=tuple(replace(n, tag=k) for k, n in enumerate(tracks[i].notes)))
         wanted = set(select(part, **conditions)) if ranges else None
@@ -217,8 +229,8 @@ def cmd_transform(args: argparse.Namespace) -> int:
                 part = apply_all(part, mask, payload, seed=rng, meters=meters)
             else:
                 part = run(part, mask, payload[0], payload[1], seed=rng, meters=meters)
-        tracks[i] = part
         nested += len(nested_overlaps(part))
+        tracks[i] = part
         lines.append(_views.transform_report(i + 1, part.name, selected, len(part.notes),
                                              [text for _k, text in args.steps]))
     atomic_write_bytes(args.out, write(replace(song, tracks=tuple(tracks))))
@@ -227,6 +239,8 @@ def cmd_transform(args: argparse.Namespace) -> int:
         print(_views.nested_warning(nested))
     if orphans := sum(t.orphan_offs for t in song.tracks):
         print(_views.orphan_warning(orphans))
+    if skipped := skipped_meters(song):
+        print(_views.meter_warning(skipped))
     if args.seed == "random":
         print(f"seed {seed}")
     print(f"out : {args.out}")
@@ -254,6 +268,10 @@ def main(argv: list[str] | None = None) -> int:
     except BrokenPipeError:
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return 0
+    except PartWording as e:
+        log.debug("error", error=str(e), exc_info=True)
+        print(f"groovebin: {_views.spoken(str(e))}", file=sys.stderr)
+        return 1
     except (FlowException, OSError, ValueError, KeyError, ArithmeticError, sqlite3.Error) as e:
         log.debug("error", error=str(e), exc_info=True)
         print(f"groovebin: {e}", file=sys.stderr)

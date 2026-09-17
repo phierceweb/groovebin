@@ -129,3 +129,32 @@ def test_nested_overlaps_on_many_notes_of_one_pitch_takes_no_quadratic_time():
 def test_a_time_signature_with_a_denominator_past_64_is_skipped():
     part = Part(96, (), (Event(0, b"\xff\x58\x04\x04\xff\x18\x08"), Event(96, b"\xff\x58\x04\x03\x07\x18\x08")))
     assert meter_map(Song(96, 0, (part,))).changes == ((0, 4, 4),)
+
+
+def test_pairing_counts_a_note_off_that_found_two_of_its_key_open():
+    from groovebin.song import pair
+    part = pair([(0, b"\x90\x24\x64"), (10, b"\x90\x24\x5a"), (20, b"\x80\x24\x00"), (100, b"\x80\x24\x00")], ppq=96)
+    assert part.nested_ons == 1
+    assert [(n.tick, n.length) for n in part.notes] == [(0, 20), (10, 90)]
+    assert pair([(0, b"\x90\x24\x64"), (20, b"\x80\x24\x00")], ppq=96).nested_ons == 0
+
+
+def test_a_signature_the_ppq_cannot_hold_in_whole_ticks_is_skipped():
+    from groovebin.events import Event
+    from groovebin.song import Part, Song, meter_map
+    sixty_fourth = Event(0, b"\xff\x58\x04\x01\x06\x18\x08")
+    assert meter_map(Song(120, 1, (Part(120, (), (sixty_fourth,)),))).changes == ((0, 4, 4),)
+    assert meter_map(Song(960, 1, (Part(960, (), (sixty_fourth,)),))).changes == ((0, 1, 64),)
+
+
+def test_the_skipped_signatures_are_counted_for_a_caller_to_report():
+    from groovebin.events import Event
+    from groovebin.song import Part, Song, meter_map, skipped_meters
+    sixty_fourth = Event(0, b"\xff\x58\x04\x01\x06\x18\x08")
+    zero = Event(10, b"\xff\x58\x04\x00\x02\x18\x08")
+    past_64 = Event(20, b"\xff\x58\x04\x04\x07\x18\x08")
+    song = Song(120, 1, (Part(120, (), (sixty_fourth, zero, past_64)),))
+    assert meter_map(song).defaulted and meter_map(song).changes == ((0, 4, 4),)
+    assert skipped_meters(song) == 3
+    assert skipped_meters(Song(960, 1, (Part(960, (), (sixty_fourth,)),))) == 0
+    assert skipped_meters(Song(960, 1, (Part(960),))) == 0

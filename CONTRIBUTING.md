@@ -29,7 +29,7 @@ bin/run lint           # ruff + pf-core's structural gate
 - **A map entry needs a source.** A vendor's published keymap, a standard's own table, or
   notes measured from files the instrument's software wrote — named in the map's `source`. A
   note no source names stays out of the map.
-- **Library code is quiet.** The library imports mido and the standard library only; logging,
+- **Library code is quiet.** The library imports the standard library only; logging,
   printing, environment variables and pf-core belong to the CLI modules.
   `tests/test_package_layering.py` enforces this and the module layers.
 - **One concern per file.** `bin/run lint` runs pf-core's file-size gate; if a file is over,

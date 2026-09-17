@@ -1,8 +1,10 @@
 """Notes and every other event on a signed tick timeline, and the order events take at one tick.
 
 A Note is a note-on paired with its note-off. An Event is any other event a Standard MIDI File
-holds, kept as its file bytes: a channel message, a SysEx (``F0 … F7``), or a meta event
-(``FF type length payload``). Ticks may be negative: a part's events can sit before its start.
+holds, kept as its file bytes: a channel message, a SysEx packet (``F0 …``, ending in ``F7``
+unless it continues in an escape), an F7 escape (``F7 …``, any bytes, a status among them), or
+a meta event (``FF type length payload``). Ticks may be negative: a part's events can sit before
+its start.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from dataclasses import dataclass, field
 
 CHANNEL_KINDS = {0xA0: "polytouch", 0xB0: "control", 0xC0: "program", 0xD0: "pressure", 0xE0: "bend"}
 DATA_BYTES = {0xA0: 2, 0xB0: 2, 0xC0: 1, 0xD0: 1, 0xE0: 2}
-RANK = {"meta": 0, "sysex": 1, "program": 2, "control": 3, "note": 4, "polytouch": 5,
+RANK = {"meta": 0, "sysex": 1, "escape": 1, "program": 2, "control": 3, "note": 4, "polytouch": 5,
         "pressure": 6, "bend": 7}
 MAX_VLQ = 0x0FFFFFFF                     # a variable-length quantity is four bytes at most
 
@@ -79,10 +81,11 @@ class Event:
             if bad := next((b for b in data[1:] if b & 0x80), None):
                 raise ValueError(f"data byte 0x{bad:02X} is not below 0x80")
         elif status == 0xF0:
-            if data[-1] != 0xF7 or len(data) < 2:
-                raise ValueError("a SysEx event ends with 0xF7")
-            if bad := next((b for b in data[1:-1] if b & 0x80), None):
+            body = data[1:-1] if data[-1] == 0xF7 and len(data) > 1 else data[1:]   # no F7: continued in an escape
+            if bad := next((b for b in body if b & 0x80), None):
                 raise ValueError(f"SysEx data byte 0x{bad:02X} is not below 0x80")
+        elif status == 0xF7:
+            pass                                          # an escape's bytes go to the wire as they are
         elif status == 0xFF:
             if len(data) < 3 or data[1] & 0x80:
                 raise ValueError(f"meta type 0x{data[1] if len(data) > 1 else 0:02X} is not below 0x80")
@@ -99,6 +102,8 @@ class Event:
             return "meta"
         if status == 0xF0:
             return "sysex"
+        if status == 0xF7:
+            return "escape"
         return CHANNEL_KINDS[status & 0xF0]
 
     @property

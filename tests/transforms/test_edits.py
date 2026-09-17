@@ -64,12 +64,13 @@ def test_an_event_already_before_the_start_may_move():
     assert [n.tick for n in shift(part(note(-100), note(480)), -10).notes] == [-110, 470]
 
 
-def test_delete_by_pitch_or_every_note_leaves_other_events():
-    p = part(note(0, 36), control(0), note(240, 38), note(480, 36), Event(0, b"\xa0\x24\x10"))
+def test_delete_takes_a_deleted_keys_aftertouch_and_leaves_other_events():
+    touch_36, touch_38 = Event(0, b"\xa0\x24\x10"), Event(240, b"\xa0\x26\x10")
+    p = part(note(0, 36), control(0), note(240, 38), note(480, 36), touch_36, touch_38)
     kept, gone = delete(p, 36)
-    assert (gone, [n.pitch for n in kept.notes], kept.events) == (2, [38], p.events)
+    assert (gone, [n.pitch for n in kept.notes], kept.events) == (2, [38], (control(0), touch_38))
     kept, gone = delete(p)
-    assert (gone, kept.notes, kept.events) == (3, (), p.events)
+    assert (gone, kept.notes, kept.events) == (3, (), (control(0),))
 
 
 def test_grid_ticks_are_note_values_at_the_parts_ppq():

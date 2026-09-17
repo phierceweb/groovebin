@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from ..song import Part
 from ..timing import MeterMap
-from .edits import Mask, grid_ticks, masked, note_lengths, stretch, swing
+from .edits import Mask, PartWording, grid_ticks, masked, note_lengths, stretch, swing
 from .select import Operation, apply_all, humanize, velocity_band
 from .select_parse import number, tick_value, whole_number
 
@@ -18,7 +18,7 @@ from .select_parse import number, tick_value, whole_number
 class Preset:
     name: str
     takes: str                   # none | int | int? | float | ticks | lo..hi | percent | swing | humanize
-    default: object              # the value when none is given; None with a value kind means required
+    default: int | float | tuple[int | float, ...] | None   # the value when none is given; None with a value kind means required
     about: str
 
 
@@ -99,6 +99,8 @@ def operations(name: str, value: object = None) -> list[Operation]:
     """The operations a preset expands to; one that is not built from operations (`WHOLE_PART`, legato,
     staccato) is refused."""
     if name == "humanize":
+        if not (isinstance(value, (tuple, list)) and len(value) == 3):
+            raise ValueError(f"humanize takes (position, velocity, length) ticks, not {value!r}")
         pos, vel, length = value
         return [Operation(f, "random", v) for f, v in (("tick", pos), ("velocity", vel), ("length", length)) if v]
     if name == "fixed-velocity":
@@ -134,7 +136,7 @@ def run(part: Part, mask: Mask | None, name: str, value: object = None, *, seed:
     if name not in BY_NAME:
         raise ValueError(f"no preset {name!r}: {', '.join(BY_NAME)}")
     if name in WHOLE_PART and mask is not None:
-        raise ValueError(f"{name} takes the whole part; it has no selection")
+        raise PartWording(f"{name} takes the whole part; it has no selection")
     if name == "half-speed":
         return stretch(part, 2.0)
     if name == "double-speed":

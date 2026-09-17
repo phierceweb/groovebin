@@ -94,6 +94,9 @@ def _query(db_path: Path, sql: str, args: list) -> list[dict]:
         con.close()
 
 
+MAX_LIMIT = 2**63 - 1                    # sqlite's LIMIT is a signed 64-bit integer
+
+
 def search(db_path: Path, *, limit: int | None = 50, **filters: str | bool | None) -> list[dict]:
     """Rows matching every filter given, the columns a listing shows. ``category``, ``meter``, ``library``
     and ``role`` match whole values, case aside; ``group`` and ``variant`` match a substring; ``fill`` and
@@ -101,8 +104,8 @@ def search(db_path: Path, *, limit: int | None = 50, **filters: str | bool | Non
     where, args = _where(**filters)
     sql = f"SELECT {', '.join(SHOWN)} FROM beats WHERE {where} ORDER BY library, category, group_name, variant, key"
     if limit is not None:
-        if limit < 0:
-            raise ValueError(f"a limit of {limit} rows is below 0")
+        if not 0 <= limit <= MAX_LIMIT:
+            raise ValueError(f"a limit of {limit} rows is not 0 to {MAX_LIMIT}")
         sql += f" LIMIT {int(limit)}"
     return _query(db_path, sql, args)
 
