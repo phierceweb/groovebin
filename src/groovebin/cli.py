@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import random
 import secrets
@@ -17,47 +16,18 @@ from pf_core.exceptions import FlowException, InvalidInputError
 from pf_core.log import get_logger, setup_logging
 from pf_core.utils.io import atomic_write_bytes
 
-from . import _views, _views_library
+from . import _views
+from ._commands_library import cmd_generate, cmd_index, cmd_search, cmd_show
+from ._commands_bass import cmd_analyze, cmd_bass, cmd_roots
+from ._files import is_file, named, read_song, refuse_overwrite, track_indices
 from ._parsers import build_parser, default_db
-from .library.generate import load_pool, parse_meter, phrase, phrase_song
-from .library.index import build
-from .library.search import get, search
-from .library.show import show
-from .maps import folds, landings, remap, stroke
-from .midi import read, write
+from .library.feel import apply_feel, file_template, pattern_template
+from .library.search import get
+from .maps import folds, landings, remap
+from .midi import write
 from .song import Song, meter_map, nested_overlaps, skipped_meters
 from .transforms import (BY_NAME, PRESETS, WHOLE_PART, PartWording, apply_all, parse_operation, parse_select,
                          parse_value, position_ticks, run, select)
-
-
-def _read(path: str) -> Song:
-    data = Path(path).read_bytes()
-    try:
-        return read(data)
-    except ValueError as e:
-        raise ValueError(f"{Path(path).name}: {e}") from e
-
-
-def refuse_overwrite(out: str, *inputs: str, force: bool) -> None:
-    """A command never writes over its input, and needs --force to replace any other file."""
-    for source in inputs:
-        try:
-            same = os.path.exists(out) and os.path.samefile(out, source)
-        except OSError:
-            same = False
-        if same or os.path.realpath(out) == os.path.realpath(source):
-            raise InvalidInputError(f"-o {out} would overwrite the input {source}; write a new file instead")
-    if not force and os.path.lexists(out):
-        raise InvalidInputError(f"{out} already exists; pass --force to overwrite it")
-
-
-def _track_indices(song: Song, wanted: list[int] | None, name: str) -> list[int]:
-    if wanted is None:
-        return list(range(len(song.tracks)))
-    for number in wanted:
-        if not 1 <= number <= len(song.tracks):
-            raise InvalidInputError(f"track {number} is not in {name}, which holds {len(song.tracks)} track(s)")
-    return sorted({number - 1 for number in wanted})
 
 
 def refuse_mixed_channels(song: Song, indices: list[int], name: str, *, tracks_named: bool) -> None:
@@ -81,13 +51,13 @@ def refuse_mixed_channels(song: Song, indices: list[int], name: str, *, tracks_n
 
 def cmd_remap(args: argparse.Namespace) -> int:
     refuse_overwrite(args.out, args.input, force=args.force)
-    song, name = _read(args.input), Path(args.input).name
-    indices = _track_indices(song, args.track, name)
+    song, name = read_song(args.input), Path(args.input).name
+    indices = track_indices(song, args.track, name)
     channels = set(args.channel) if args.channel else None
     if channels is None:
         refuse_mixed_channels(song, indices, name, tracks_named=args.track is not None)
     tracks, unmapped, count = list(song.tracks), Counter(), 0
-    nested = sum(t.nested_ons for t in song.tracks)     # the input's ambiguity, whichever track it is on
+    ambiguous, nested = sum(t.nested_ons for t in song.tracks), 0
     landed: dict[tuple[int, int], set[int]] = {}
     for i in indices:
         new, missing = remap(tracks[i], args.src, args.dst, channels=channels, unmapped=args.unmapped)
@@ -101,7 +71,7 @@ def cmd_remap(args: argparse.Namespace) -> int:
     atomic_write_bytes(args.out, write(replace(song, tracks=tuple(tracks))))
     orphans = sum(t.orphan_offs for t in song.tracks)
     for line in _views.remap_report(notes=count, unmapped=unmapped, src=args.src, dst=args.dst,
-                                    nested=nested, orphans=orphans, rule=args.unmapped,
+                                    nested=nested, ambiguous=ambiguous, orphans=orphans, rule=args.unmapped,
                                     folded=folds(landed)):
         print(line)
     print(f"out : {args.out}")
@@ -109,61 +79,19 @@ def cmd_remap(args: argparse.Namespace) -> int:
 
 
 def cmd_notes(args: argparse.Namespace) -> int:
-    song, name = _read(args.input), Path(args.input).name
-    indices = _track_indices(song, args.track, name)
+    song, name = read_song(args.input), Path(args.input).name
+    indices = track_indices(song, args.track, name)
     try:
         lines = _views.listing(name, song, indices, args.map)
     except ValueError as e:
         raise ValueError(f"{name}: {e}") from e
     print("\n".join(lines))
-    if nested := sum(t.nested_ons for t in song.tracks):
-        print(_views.nested_warning(nested))
+    if ambiguous := sum(t.nested_ons for t in song.tracks):
+        print(_views.ambiguous_warning(ambiguous))
     if orphans := sum(t.orphan_offs for t in song.tracks):
         print(_views.orphan_warning(orphans))
     if skipped := skipped_meters(song):
         print(_views.meter_warning(skipped))
-    return 0
-
-
-def cmd_index(args: argparse.Namespace) -> int:
-    if (args.folder is None) == (args.csv is None):
-        raise InvalidInputError("index one source: a folder or --csv")
-    db = args.db or default_db()
-    print(f"indexing the MIDI index {args.csv.name}" if args.csv else f"indexing the .mid files under {args.folder}")
-    counts = build(db, csv_path=args.csv, folder=args.folder, map_name=args.map)
-    print(_views_library.indexed(counts))
-    print(f"\nout : {db}")
-    return 0
-
-
-def cmd_search(args: argparse.Namespace) -> int:
-    rows = search(args.db or default_db(), category=args.category, role=args.role, meter=args.meter, tempo=args.tempo,
-                  fill=args.fill or None, beat=args.beat or None, swing=args.swing, intensity=args.intensity,
-                  group=args.group, variant=args.variant, library=args.library, limit=args.limit or None)
-    if args.json:
-        print(json.dumps(rows, indent=1))
-    else:
-        print("\n".join(_views_library.found(rows, args.limit)))
-    return 0
-
-
-def cmd_show(args: argparse.Namespace) -> int:
-    row = get(args.db or default_db(), args.id)
-    map_name = args.map or row.get("map")
-    print(show(row, (lambda pitch: stroke(map_name, pitch)) if map_name else None))
-    return 0
-
-
-def cmd_generate(args: argparse.Namespace) -> int:
-    refuse_overwrite(args.out, force=args.force)
-    sig = parse_meter(args.meter)
-    pool = load_pool(args.db or default_db(), sig=sig, category=args.category, role=args.role, tempo=args.tempo,
-                     intensity=args.intensity, fills=args.fills)
-    seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
-    ph = phrase(pool, bars=args.bars, seed=seed, fills=args.fills, map_name=args.map, unmapped=args.unmapped)
-    atomic_write_bytes(args.out, write(phrase_song(ph)))
-    print("\n".join(_views_library.picked(pool, ph)))
-    print(f"out : {args.out}")
     return 0
 
 
@@ -199,8 +127,8 @@ def cmd_transform(args: argparse.Namespace) -> int:
     if not args.input or not args.out:
         raise InvalidInputError("transform takes IN.mid and -o OUT.mid (--presets alone lists the presets)")
     refuse_overwrite(args.out, args.input, force=args.force)
-    song, name = _read(args.input), Path(args.input).name
-    indices = _track_indices(song, args.track, name)
+    song, name = read_song(args.input), Path(args.input).name
+    indices = track_indices(song, args.track, name)
     steps = _steps(args.steps or [], song.ppq)
     if not steps:
         raise InvalidInputError("transform needs at least one --op or --preset")
@@ -216,7 +144,7 @@ def cmd_transform(args: argparse.Namespace) -> int:
         seed = int(args.seed)
     rng, meters, tracks, lines = random.Random(seed), meter_map(song), list(song.tracks), []
     conditions = {f: (position_ticks(r, meters) if f == "tick" else r) for f, r in ranges.items()}
-    nested = sum(t.nested_ons for t in song.tracks)     # the input's ambiguity, whichever track it is on
+    ambiguous, nested = sum(t.nested_ons for t in song.tracks), 0
     for i in indices:
         part = replace(tracks[i], notes=tuple(replace(n, tag=k) for k, n in enumerate(tracks[i].notes)))
         wanted = set(select(part, **conditions)) if ranges else None
@@ -235,6 +163,8 @@ def cmd_transform(args: argparse.Namespace) -> int:
                                              [text for _k, text in args.steps]))
     atomic_write_bytes(args.out, write(replace(song, tracks=tuple(tracks))))
     print("\n".join(lines))
+    if ambiguous:
+        print(_views.ambiguous_warning(ambiguous))
     if nested:
         print(_views.nested_warning(nested))
     if orphans := sum(t.orphan_offs for t in song.tracks):
@@ -247,8 +177,38 @@ def cmd_transform(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_feel(args: argparse.Namespace) -> int:
+    source_file = is_file(args.source)
+    refuse_overwrite(args.out, args.file, *([args.source] if source_file else []), force=args.force)
+    for flag, share in (("--timing", args.timing), ("--velocity", args.velocity)):
+        if not 0 <= share <= 100:
+            raise InvalidInputError(f"{flag} {share:g}: 0 to 100")
+    song, name = read_song(args.file), Path(args.file).name
+    indices = track_indices(song, args.track, name)
+    if source_file:
+        tpl = named(args.source, lambda data: file_template(data, args.map, grid=args.grid))
+        label = Path(args.source).name
+    else:
+        row = get(args.db or default_db(), args.source)
+        tpl, label = pattern_template(row, grid=args.grid), f"pattern {row['id']}"
+    meters, tracks, totals = meter_map(song), list(song.tracks), Counter()
+    for i in indices:
+        felt = apply_feel(tracks[i].notes, meters, tpl, args.map, timing=args.timing / 100, velocity=args.velocity / 100)
+        tracks[i] = replace(tracks[i], notes=felt.notes)
+        totals.update(notes=len(felt.notes), moved=felt.moved, unmatched=felt.unmatched, held=felt.held)
+    atomic_write_bytes(args.out, write(replace(song, tracks=tuple(tracks))))
+    print(_views.felt(label, tpl.grid, totals["notes"], totals["moved"], totals["unmatched"], totals["held"]))
+    if ambiguous := sum(t.nested_ons for t in song.tracks):
+        print(_views.ambiguous_warning(ambiguous))
+    if nested := sum(len(nested_overlaps(tracks[i])) for i in indices):
+        print(_views.nested_warning(nested))
+    print(f"out : {args.out}")
+    return 0
+
+
 COMMANDS = {"remap": cmd_remap, "notes": cmd_notes, "index": cmd_index, "search": cmd_search, "show": cmd_show,
-            "generate": cmd_generate, "transform": cmd_transform}
+            "generate": cmd_generate, "transform": cmd_transform, "feel": cmd_feel, "roots": cmd_roots,
+            "analyze": cmd_analyze, "bass": cmd_bass}
 
 
 def main(argv: list[str] | None = None) -> int:

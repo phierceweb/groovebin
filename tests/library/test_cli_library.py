@@ -36,9 +36,10 @@ def test_index_then_search_then_show(tmp_path, capsys):
     rc, out, _ = run(capsys, "search", "--json", "--db", db)
     assert sorted(r["variant"] for r in json.loads(out)) == ["Intro 02", "Verse 01"]
     rc, out, _ = run(capsys, "show", pattern_id, "--db", db)
-    assert rc == 0 and out.splitlines()[1] == " 49 HiHat Closed 1 Tip |x...........o...|"
+    assert rc == 0 and out.splitlines()[1].startswith("feel  density ")
+    assert out.splitlines()[2] == " 49 HiHat Closed 1 Tip |x...........o...|"
     rc, out, _ = run(capsys, "show", pattern_id, "--map", "gm", "--db", db)
-    assert out.splitlines()[1].startswith(" 49 Crash Cymbal 1 ")
+    assert out.splitlines()[2].startswith(" 49 Crash Cymbal 1 ")
 
 
 def test_index_takes_a_csv_instead_of_a_folder(tmp_path, capsys):

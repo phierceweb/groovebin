@@ -1,0 +1,169 @@
+{
+  "source": "Logic Pro 12.3 User Guide, Apple, 'Drum Kit Designer mappings': the Brush Snare column of the figure 'Drum Kit Designer GM Standard, GM + ModWheel, and Brush Snare keyboard mappings', in Logic's octave naming (C1 = 36) - the GM Standard keys and the brush keys below them - and the page's text: brush circles play while the key is held, MIDI channel 1 picks the hands, 2 the right, 3 the left, and the mute keys stop a held circle on the same hand.",
+  "note": "name is the guide's label. term, duplicate_of and prefer are this table's choices, not Apple's, and so is every pairing with another map drawn from them. The GM Standard keys are drum-kit-designer's. A brush key leads its term with brush, so no fallback reaches a strike: a sweep or circle held for its length has no counterpart in a kit without brushes. A remap keeps each note's channel, which picks the hand.",
+  "prefer": {
+    "tom": 48
+  },
+  "notes": {
+    "17": {
+      "name": "Sweep Stroke",
+      "term": "brush sweep stroke"
+    },
+    "18": {
+      "name": "Snare Sweep Accents Hit",
+      "term": "brush sweep accent hit"
+    },
+    "19": {
+      "name": "Snare Sweep Accents",
+      "term": "brush sweep accent"
+    },
+    "21": {
+      "name": "Snare 1/4 Note Circles",
+      "term": "brush circle quarter"
+    },
+    "22": {
+      "name": "Snare 1/2 Note Circles",
+      "term": "brush circle half"
+    },
+    "23": {
+      "name": "Snare Sweeps 16th Note",
+      "term": "brush sweep 16th"
+    },
+    "24": {
+      "name": "Snare Sweeps 8th Note",
+      "term": "brush sweep 8th"
+    },
+    "25": {
+      "name": "Snare Center Mute 2",
+      "term": "brush mute 2"
+    },
+    "27": {
+      "name": "Snare Center Mute 1",
+      "term": "brush mute 1"
+    },
+    "28": {
+      "name": "Crash Left Stop",
+      "term": "choke cymbal 1"
+    },
+    "29": {
+      "name": "Crash Right Stop",
+      "term": "choke cymbal 2"
+    },
+    "30": {
+      "name": "Snare Drag",
+      "term": "brush drag"
+    },
+    "31": {
+      "name": "Hi-Hat Foot Splash",
+      "term": "hihat pedal open"
+    },
+    "32": {
+      "name": "Snare Rimshot Edge",
+      "term": "snare rimshot edge"
+    },
+    "33": {
+      "name": "Hi-Hat Foot Close",
+      "duplicate_of": 44
+    },
+    "34": {
+      "name": "Snare Edge",
+      "term": "snare edge"
+    },
+    "35": {
+      "name": "Kick",
+      "duplicate_of": 36
+    },
+    "36": {
+      "name": "Kick",
+      "term": "kick"
+    },
+    "37": {
+      "name": "Snare Sidestick",
+      "term": "sidestick"
+    },
+    "38": {
+      "name": "Snare Center",
+      "term": "snare"
+    },
+    "39": {
+      "name": "Hand Claps",
+      "term": "clap"
+    },
+    "40": {
+      "name": "Snare Rimshot",
+      "term": "snare rimshot"
+    },
+    "41": {
+      "name": "Low Tom",
+      "term": "tom 4"
+    },
+    "42": {
+      "name": "Hi-Hat Closed",
+      "term": "hihat closed"
+    },
+    "43": {
+      "name": "Low Tom Edge",
+      "term": "tom 4 edge"
+    },
+    "44": {
+      "name": "Hi-Hat Foot Close",
+      "term": "hihat pedal"
+    },
+    "45": {
+      "name": "Mid Tom",
+      "term": "tom 3"
+    },
+    "46": {
+      "name": "Hi-Hat Open",
+      "term": "hihat open"
+    },
+    "47": {
+      "name": "Mid Tom Edge",
+      "term": "tom 3 edge"
+    },
+    "48": {
+      "name": "High Tom",
+      "term": "tom 2"
+    },
+    "49": {
+      "name": "Crash Left",
+      "term": "cymbal 1"
+    },
+    "50": {
+      "name": "High Tom Edge",
+      "term": "tom 2 edge"
+    },
+    "51": {
+      "name": "Ride Outer",
+      "term": "ride"
+    },
+    "52": {
+      "name": "Ride Edge",
+      "term": "ride edge"
+    },
+    "53": {
+      "name": "Ride Bell",
+      "term": "ride bell"
+    },
+    "54": {
+      "name": "Tambourine",
+      "term": "tambourine"
+    },
+    "56": {
+      "name": "Cowbell",
+      "term": "cowbell"
+    },
+    "57": {
+      "name": "Crash Right",
+      "term": "cymbal 2"
+    },
+    "59": {
+      "name": "Ride Inner",
+      "term": "ride inner"
+    },
+    "70": {
+      "name": "Shaker",
+      "term": "maracas shaker"
+    }
+  }
+}

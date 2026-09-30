@@ -7,7 +7,8 @@ import pytest
 from smf_bytes import BARE, CSV_HEADER, EOT, FORMAT_1, TWO_BARS, csv_row, smf, write_csv
 
 from groovebin.events import Note
-from groovebin.library.index import build, unpack_notes
+from groovebin.library.blobs import unpack_notes
+from groovebin.library.index import build
 from groovebin.library.search import search
 
 TWO_BAR_NOTES = [Note(0, 120, 10, 36, 100, 64), Note(0, 60, 10, 42, 80), Note(480, 60, 10, 38, 90),
@@ -49,7 +50,7 @@ def test_a_meter_change_after_bar_1_labels_the_row_with_bar_1s_meter(tmp_path):
 
 def test_a_csv_index_counts_rows_and_keeps_the_csvs_columns_and_the_parsed_file(csv_index):
     _source, db, counts = csv_index
-    assert counts == {"rows": 4, "parsed": 2, "failed": 1, "duplicates": 1}
+    assert counts == {"rows": 4, "parsed": 2, "failed": 1, "duplicates": 1, "chords": 0, "unread_chords": 0}
     a, b, c = rows(db)
     assert (a["ppq"], a["bars"], a["meter"], a["tempo"], a["is_beat"], a["is_fill"], a["role"], a["map"]) == \
            (240, 2, "4/4", 97.999985, 1, 0, "verse", "addictive-drums-2")
@@ -69,7 +70,7 @@ def test_a_folder_index_takes_labels_from_the_path_and_meter_and_tempo_from_the_
     (folder / "Swing 6-8 at 90bpm" / "Tom Fill.mid").write_bytes(BARE)
     (folder / "notes.txt").write_text("not midi")
     db = tmp_path / "folder.sqlite"
-    assert build(db, folder=folder, map_name="gm") == {"rows": 2, "parsed": 2, "failed": 0, "duplicates": 0}
+    assert build(db, folder=folder, map_name="gm") == {"rows": 2, "parsed": 2, "failed": 0, "duplicates": 0, "chords": 0, "unread_chords": 0}
     verse, fill = rows(db)
     assert (verse["file"], verse["group_name"], verse["variant"], verse["category"], verse["role"], verse["is_fill"],
             verse["is_beat"], verse["meter"], verse["tempo"], verse["map"], verse["source"]) == \
@@ -86,7 +87,7 @@ def test_a_row_that_does_not_parse_or_runs_out_of_range_is_a_failed_row_not_a_fa
     far = smf(0, 1, [(0, b"\xff\x58\x04\xff\x00\x18\x08"), (4_500_000, b"\x99\x24\x64"), (1, b"\x24\x00"), (0, EOT)])
     (folder / "far.mid").write_bytes(far)
     db = tmp_path / "odd.sqlite"
-    assert build(db, folder=folder, map_name="gm") == {"rows": 2, "parsed": 1, "failed": 1, "duplicates": 0}
+    assert build(db, folder=folder, map_name="gm") == {"rows": 2, "parsed": 1, "failed": 1, "duplicates": 0, "chords": 0, "unread_chords": 0}
     assert "past the index's 32-bit tick range" in rows(db, "file = 'far.mid'")[0]["error"]
     lines = [csv_row(f"{n}.mid", "G", n, "Rock", "4/4", "120", True, "0.5", "0.5", TWO_BARS) for n in ("ok", "inf", "big")]
     lines[1][CSV_HEADER.index("HH_Type")], lines[2][CSV_HEADER.index("KK_Vel")] = "inf", "1e30"
@@ -180,7 +181,7 @@ def test_a_file_that_cannot_be_opened_is_a_failed_row_not_a_failed_build(tmp_pat
 
     monkeypatch.setattr(Path, "read_bytes", read_bytes)
     db = tmp_path / "locked.sqlite"
-    assert build(db, folder=folder, map_name="gm") == {"rows": 2, "parsed": 1, "failed": 1, "duplicates": 0}
+    assert build(db, folder=folder, map_name="gm") == {"rows": 2, "parsed": 1, "failed": 1, "duplicates": 0, "chords": 0, "unread_chords": 0}
     assert rows(db, "file = 'locked.mid'")[0]["error"] == "not read: Permission denied"
 
 
@@ -200,7 +201,7 @@ def test_a_subfolder_that_cannot_be_listed_is_a_failed_row_and_an_unlistable_fol
     finally:
         folder.chmod(0o755)
         (folder / "locked").chmod(0o755)
-    assert counts == {"rows": 2, "parsed": 1, "failed": 1, "duplicates": 0}
+    assert counts == {"rows": 2, "parsed": 1, "failed": 1, "duplicates": 0, "chords": 0, "unread_chords": 0}
     assert rows(db, "file = 'locked'")[0]["error"] == "not listed: Permission denied"
     assert [r["file"] for r in search(db, limit=None)] == ["a.mid"]
     assert not (tmp_path / "root.sqlite").exists()

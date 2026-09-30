@@ -3,6 +3,53 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.4.0] — 2026-09-30
+
+### Added
+- The index records each pattern's feel when it has a drum map: a kick, snare and hands rhythm per bar on a
+  sixteenth grid, and its density, syncopation, subdivision, eighth and sixteenth swing, and snare lag
+  (`library.groove`).
+- `search` filters `--density`, `--syncopation`, `--subdivision`, `--swing8`, `--swing16` and `--lag`, and
+  `--like ID|FILE` ranks patterns by rhythm, nearest first (`search.similar`; `--like-map` for a file).
+- `search --rhythm LANES` ranks against a typed rhythm, counting only the lanes given
+  (`groove_text.parse_rhythm`); `show --rhythm` prints a pattern's lanes in that form
+  (`groove_text.rhythm_text`).
+- `show` prints a pattern's feel; `search --json` carries the feel columns.
+- `docs/api.md`: using groovebin from Python, and adding a note map.
+- `groovebin feel` lays a reference part's timing and accents — a `.mid` file or a library pattern — on a
+  file's notes as a groove template, per voice with a drum map (`library.feel`).
+- A `drum-kit-designer-brushes` map: Drum Kit Designer's brush snare kits, whose brush keys never fall back
+  onto a strike.
+- An `ezbass` bass map: EZbass's twelve keyswitches, its playable range and its reserved controllers.
+  `notes`, `index` and `bass` take it, and `remap` translates drum maps only; `maps.note_map` loads any map,
+  `maps.drum_map` only a drum map, and `maps.NAMES` stays the drum maps.
+- A folder index reads the chord file EZbass keeps beside a groove (`.midchordinfo`): its chords, changes per
+  bar and first chord's quality; `search --quality` and `--changes` filter on them and `show` lists them
+  (`library.sidecar`).
+- `groovebin bass`: a bassline over a drum file's kicks and a chord chart, or the chords another bassline
+  implies, by rules measured on EZbass's own grooves; EZbass keyswitches for snare mutes
+  (`library.bass_rules`). `--library` picks real bars from a bass library by how they meet the kicks and
+  re-voices them onto the chart (`library.bass_picker`, `harmony.revoice`).
+- `groovebin analyze`: a bassline's rhythm, how it sits with a drum part's kick and snare, and how it plays
+  a chord chart (`library.bassline`).
+- `harmony`: pitch classes, chord symbols and chord charts in plain Python, and `roots`: the chords a bassline
+  implies. `groovebin roots` prints them as a chart.
+- `harmony.scale_of`: the scale a line holds, a major key and its relative minor, from Krumhansl and Kessler's
+  key profiles; `roots` and `analyze` print it.
+- `generate --crash` puts a crash on the downbeat after each fill; `generate --level` levels each bar's
+  velocities to the phrase's kick and snare median. Without them a seed gives the same notes at the same
+  times it always has.
+
+### Changed
+- Index schema 4: each pattern keeps its channel events beside its notes (`library.blobs`, `Pattern.events`,
+  `Pattern.bar_events`); an index built by an earlier version is refused until it is built again.
+- A search range takes negative bounds (`<-10`, `--lag=-20--5`).
+- `generate` ends each note by the next note of its pitch, so a reader pairs every note-off with its own note.
+
+### Fixed
+- `remap` and `transform` count the note-offs the input left ambiguously paired and the pairs of one pitch
+  the run nests on separate lines; one pair that was both was counted twice.
+
 ## [0.3.0] — 2026-09-17
 
 ### Added

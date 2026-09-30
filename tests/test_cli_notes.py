@@ -64,7 +64,7 @@ def test_notes_says_when_the_lengths_it_lists_are_one_reading_of_an_ambiguous_fi
     path.write_bytes(write(Song(480, 1, (ambiguous,))))
     assert main(["notes", str(path)]) == 0
     out = capsys.readouterr().out
-    assert "1 same-pitch note pair(s)" in out
+    assert "1 note-off(s) in the input found more than one note of their pitch open" in out and "same-pitch" not in out
 
 
 def test_notes_says_nothing_extra_about_an_unambiguous_file(tmp_path, capsys):

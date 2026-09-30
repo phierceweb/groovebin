@@ -10,9 +10,10 @@ import json
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 
-from ..events import Note
+from ..events import Event, Note
 from ..timing import MeterMap
-from .index import MAX_BARS, PPQ, unpack_notes
+from .blobs import unpack_events, unpack_notes
+from .index import MAX_BARS, PPQ
 
 SIXTEENTH = PPQ // 4
 
@@ -36,6 +37,7 @@ class Pattern:
     role: str | None
     is_fill: bool
     tempo: float | None
+    events: tuple[Event, ...] = ()
 
     @property
     def ticks(self) -> int:
@@ -51,6 +53,12 @@ class Pattern:
         start = sum(bar_ticks(sig) for sig in self.bars[:index])
         end = start + bar_ticks(self.bars[index])
         return [replace(n, tick=n.tick - start) for n in self.notes if start <= n.tick < end]
+
+    def bar_events(self, index: int) -> list[Event]:
+        """Bar ``index``'s channel events (0-based), ticks from that bar's line."""
+        start = sum(bar_ticks(sig) for sig in self.bars[:index])
+        end = start + bar_ticks(self.bars[index])
+        return [replace(e, tick=e.tick - start) for e in self.events if start <= e.tick < end]
 
     def last_bar(self) -> list[Note]:
         start = self.ticks - bar_ticks(self.bars[-1])
@@ -87,7 +95,8 @@ def pattern(row: dict) -> Pattern:
     variant = (row.get("variant") or "").strip()
     name = variant or PurePosixPath(row.get("file") or "").stem or row["id"]
     return Pattern(row["id"], name, variant, signatures(row["meters"], row["bars"]), tuple(unpack_notes(row["notes"])),
-                   row.get("map"), row.get("role"), bool(row.get("is_fill")), row.get("tempo"))
+                   row.get("map"), row.get("role"), bool(row.get("is_fill")), row.get("tempo"),
+                   tuple(unpack_events(row.get("events"))))
 
 
 def repeated(notes: Iterable[Note], span: int, times: int, end: int | None = None) -> tuple[list[Note], int]:

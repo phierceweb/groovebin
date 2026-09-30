@@ -7,9 +7,9 @@ Bug reports, map corrections backed by a source, and fixes with tests are all we
 groovebin reads each track into notes (start, length, channel, pitch, velocity, release
 velocity) and every other event — controllers, program changes, pitch bend, aftertouch, meta
 and SysEx — at its tick. Writing a file back and reading it again gives the same notes and the
-same events, track for track. Three things are normalised, not kept: events of different kinds at
-one tick are written in a fixed order, a note-off with no note before it is dropped and reported,
-and an F7 escape is written as a SysEx event. A remap changes note pitches and aftertouch keys and nothing else. A change that loses
+same events, track for track. Two things are normalised, not kept: events of different kinds at
+one tick are written in a fixed order, and a note-off with no note before it is dropped and
+reported. A remap changes note pitches and aftertouch keys and nothing else. A change that loses
 or alters any other note or event on a real file is a bug, no matter what else it fixes.
 
 If you find a file that does not survive a round trip, that is the most valuable report you
@@ -44,7 +44,8 @@ bin/run lint           # ruff + pf-core's structural gate
 
 New behaviour needs a test, and a bug fix needs a test that fails without the fix. Tests pass
 on a fresh clone with no DAW, no plug-in and no user files: build the MIDI in the test with
-mido. Never commit a `.mid` file or a real pattern, song or pack name.
+`groovebin.midi.write` or the helpers in `tests/library/smf_bytes.py`. Never commit a `.mid` file or a
+real pattern, song or pack name.
 
 ## Reporting security issues
 

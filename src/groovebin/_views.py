@@ -13,11 +13,16 @@ def joined(items: list[object]) -> str:
     return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
 
 
+def ambiguous_warning(count: int) -> str:
+    """The line a command prints when its input left same-pitch notes' pairing open."""
+    return (f"{count} note-off(s) in the input found more than one note of their pitch open: a reader pairs them "
+            "first in, first out, so those lengths are one reading of the file")
+
+
 def nested_warning(count: int) -> str:
-    """The line a command prints when its input or output holds same-pitch notes a reader cannot
-    pair back with certainty."""
-    return (f"{count} same-pitch note pair(s) start inside a longer one and end before it: "
-            "a reader pairs note-offs first in, first out, so those lengths read as swapped")
+    """The line a command prints when its output holds same-pitch notes a reader cannot pair back."""
+    return (f"{count} same-pitch note pair(s) now start inside a longer one and end before it: "
+            "a reader pairs note-offs first in, first out, so those lengths read back swapped")
 
 
 def orphan_warning(count: int) -> str:
@@ -33,7 +38,7 @@ def meter_warning(count: int) -> str:
 
 
 def remap_report(*, notes: int, unmapped: Counter, src: str, dst: str, nested: int, orphans: int,
-                 rule: str = "keep", folded: dict[int, list[int]] | None = None) -> list[str]:
+                 rule: str = "keep", folded: dict[int, list[int]] | None = None, ambiguous: int = 0) -> list[str]:
     line = f"{notes - sum(unmapped.values())} of {notes} note(s) remapped {src} -> {dst}"
     if unmapped:
         kept = ", ".join(f"{pitch} x{count}" for pitch, count in sorted(unmapped.items()))
@@ -41,6 +46,8 @@ def remap_report(*, notes: int, unmapped: Counter, src: str, dst: str, nested: i
     lines = [line]
     for target, sources in sorted((folded or {}).items()):
         lines.append(f"{src} pitches {', '.join(map(str, sources))} all land on {dst} {target}")
+    if ambiguous:
+        lines.append(ambiguous_warning(ambiguous))
     if nested:
         lines.append(nested_warning(nested))
     if orphans:
@@ -83,6 +90,15 @@ def presets(items) -> list[str]:
             value = f"  (=VALUE, default {shown})"
         out.append(f"{p.name:{width}s}  {p.about}{value}")
     return out
+
+
+def felt(source: str, grid: int, notes: int, moved: int, unmatched: int, held: int) -> str:
+    line = f"feel of {source} on {'an eighth' if grid == 8 else 'a sixteenth'}-note grid: {moved} of {notes} note(s) moved"
+    if unmatched:
+        line += f", {unmatched} left as they were, with no reference feel at their place"
+    if held:
+        line += f", {held} held at the start"
+    return line
 
 
 def transform_report(number: int, name: str | None, selected: int, total: int, steps: list[str]) -> str:

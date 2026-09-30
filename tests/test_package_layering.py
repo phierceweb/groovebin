@@ -12,9 +12,10 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "groovebin"
 
 BOUNDARY = 3
 RANKS = {
-    "cli": BOUNDARY, "_parsers": BOUNDARY, "_views": BOUNDARY,
+    "cli": BOUNDARY, "_parsers": BOUNDARY, "_views": BOUNDARY, "_files": BOUNDARY, "_commands_library": BOUNDARY,
+    "_commands_bass": BOUNDARY,
     "library": 2,
-    "maps": 1, "transforms": 1,
+    "maps": 1, "transforms": 1, "harmony": 1,
     "midi": 0, "events": 0, "timing": 0, "song": 0,
 }
 QUIET_MODULES = {"logging"}
@@ -55,7 +56,7 @@ def violations(src: Path) -> list[str]:
         unit = unit_of(path, src)
         mine = rank(unit)
         if mine is None:
-            found.append(f"{where}: no layer for module {unit!r} — rank it in RANKS and layering.md")
+            found.append(f"{where}: no layer for module {unit!r} — rank it in RANKS")
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), where)):
             line = f"{where}:{getattr(node, 'lineno', 0)}"

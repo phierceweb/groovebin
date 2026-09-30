@@ -18,7 +18,7 @@ def raw(name):
 
 
 def test_the_maps_come_in_a_fixed_order():
-    assert NAMES == ("gm", "addictive-drums-2", "drum-kit-designer")
+    assert NAMES == ("gm", "addictive-drums-2", "drum-kit-designer", "drum-kit-designer-brushes")
     assert list(maps()) == list(NAMES)
 
 

@@ -1,0 +1,77 @@
+{
+  "source": "EZbass Key Switch Layout: the PDF installed with EZbass 1.3.4, dated 2026-04-27 - the twelve key switches A-1 to G#0 and the default keyboard range A0 to E4, numbered with C4 = 60. The EZbass manual's reserved MIDI control change messages: CC 1 vibrato, CC 64 sustain, CC 67 soft/damping. The numbering agrees with the 1,256 grooves EZbass installs, measured 2026-09-30: 846 hold notes below 21, and those are 15, 16, 17 and 19 alone, 7,097, 3,718, 1,113 and 94 times; the plug-in's own slide-out macros put 17 and 19 before each note of a slide down and up.",
+  "note": "name and key are the layout's own. term is this table's choice, not the vendor's. A played note is any pitch in range and is not listed; the keyswitches below the range are.",
+  "kind": "bass",
+  "range": [
+    21,
+    64
+  ],
+  "controllers": {
+    "1": "vibrato",
+    "64": "sustain",
+    "67": "damping"
+  },
+  "prefer": {},
+  "notes": {
+    "9": {
+      "key": "A-1",
+      "name": "Polyphony (hold). Disable legato.",
+      "term": "keyswitch polyphony"
+    },
+    "10": {
+      "key": "A#-1",
+      "name": "Harmonic (hold). Play harmonics.",
+      "term": "keyswitch harmonic"
+    },
+    "11": {
+      "key": "B-1",
+      "name": "Slap/Pop (hold). Play slap sounds if available.",
+      "term": "keyswitch slap"
+    },
+    "12": {
+      "key": "C0",
+      "name": "Left- or Right-Hand Mute (hold). Play mutes if available.",
+      "term": "keyswitch mute"
+    },
+    "13": {
+      "key": "C#0",
+      "name": "Middle Finger/Down Stroke. Play only middle finger/down stroke (no alteration).",
+      "term": "keyswitch down stroke"
+    },
+    "14": {
+      "key": "D0",
+      "name": "Repeater (press). Repeat the last played note.",
+      "term": "keyswitch repeat"
+    },
+    "15": {
+      "key": "D#0",
+      "name": "Loud Mute (press). Repeat the last played note as a percussive mute.",
+      "term": "keyswitch repeat loud mute"
+    },
+    "16": {
+      "key": "E0",
+      "name": "Ghost Note (press). Repeat the last played note as a ghost note.",
+      "term": "keyswitch repeat ghost"
+    },
+    "17": {
+      "key": "F0",
+      "name": "Slide Down (press). Slide currently playing note down.",
+      "term": "keyswitch slide down"
+    },
+    "18": {
+      "key": "F#0",
+      "name": "Slide (press and hold). Slide currently playing note to the next note played.",
+      "term": "keyswitch slide"
+    },
+    "19": {
+      "key": "G0",
+      "name": "Slide Up (press). Slide currently playing note up.",
+      "term": "keyswitch slide up"
+    },
+    "20": {
+      "key": "G#0",
+      "name": "Legato (hold). Enable legato.",
+      "term": "keyswitch legato"
+    }
+  }
+}

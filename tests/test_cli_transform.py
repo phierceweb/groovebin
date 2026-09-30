@@ -173,7 +173,20 @@ def test_notes_that_now_nest_inside_one_of_their_pitch_are_reported(tmp_path, ca
     out = tmp_path / "out.mid"
     rc, text, _ = run(capsys, "transform", src, "-o", out, "--op", "set:pitch=36")
     assert rc == 0, text
-    assert "1 same-pitch note pair(s) start inside a longer one and end before it" in text
+    assert "1 same-pitch note pair(s) now start inside a longer one and end before it" in text
+
+
+def test_the_inputs_ambiguity_and_the_runs_nesting_are_counted_apart(tmp_path, capsys):
+    """One pair the file left ambiguous that the run then nests is one of each, not two of either."""
+    src = tmp_path / "in.mid"
+    src.write_bytes(write(Song(480, 1, (Part(480, (Note(0, 60, 1, 38, 50), Note(10, 20, 1, 38, 100))),))))
+    assert read(src.read_bytes()).tracks[0].nested_ons == 1
+    rc, text, _ = run(capsys, "transform", src, "-o", tmp_path / "out.mid", "--select", "velocity>60",
+                      "--op", "set:length=10")
+    assert rc == 0, text
+    assert [line.split(":")[0] for line in text.splitlines() if "same-pitch" in line or "the input" in line] == [
+        "1 note-off(s) in the input found more than one note of their pitch open",
+        "1 same-pitch note pair(s) now start inside a longer one and end before it"]
 
 
 def test_an_operation_on_one_field_leaves_the_others_alone(tmp_path, capsys):
@@ -238,7 +251,7 @@ def test_the_nested_warning_covers_a_track_the_transform_did_not_touch(tmp_path,
     rc, text, _ = run(capsys, "transform", path, "--track", "1", "--op", "set:velocity=90",
                       "-o", tmp_path / "out.mid")
     assert rc == 0, text
-    assert "1 same-pitch note pair(s)" in text
+    assert "1 note-off(s) in the input found more than one note of their pitch open" in text and "same-pitch" not in text
 
 
 def test_a_refusal_the_command_line_prints_says_track_where_the_library_says_part(tmp_path, capsys):

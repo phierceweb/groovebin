@@ -22,14 +22,15 @@ def test_a_drum_row_shows_a_lane_per_note_number_and_a_cell_per_sixteenth(tmp_pa
     r = one_row(tmp_path, TWO_BARS, "gm")
     lines = show(r).splitlines()
     assert lines[0] == f"{r['id']}  Lib One / Rock / Alpha 50% Mix / Verse 01  4/4  98 bpm  2 bar(s)"
-    assert lines[1:] == [" 42 |x...............|....o...........|",
+    assert lines[1] == "feel  density 2.5  syncopation 2  subdivision quarters  swing8 -  swing16 -  lag 0"
+    assert lines[2:] == [" 42 |x...............|....o...........|",
                          " 38 |........x.......|................|",
                          " 36 |X...............|...............X|"]
 
 
 def test_lanes_can_name_their_strokes(tmp_path):
     r = one_row(tmp_path, TWO_BARS, "gm")
-    assert show(r, lambda pitch: stroke("gm", pitch)).splitlines()[1] == " 42 Closed Hi Hat  |x...............|....o...........|"
+    assert show(r, lambda pitch: stroke("gm", pitch)).splitlines()[2] == " 42 Closed Hi Hat  |x...............|....o...........|"
 
 
 def test_a_row_without_a_drum_map_shows_a_piano_roll_with_sustain(tmp_path):

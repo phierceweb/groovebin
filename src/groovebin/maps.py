@@ -22,18 +22,31 @@ from types import MappingProxyType
 from .events import Event
 from .song import Part
 
-NAMES = ("gm", "addictive-drums-2", "drum-kit-designer")
-NOT_STRIKES = ("choke", "sticks")
+NAMES = ("gm", "addictive-drums-2", "drum-kit-designer", "drum-kit-designer-brushes")
+BASS_NAMES = ("ezbass",)
+ALL_NAMES = NAMES + BASS_NAMES
+NOT_STRIKES = ("choke", "sticks", "brush")
 POLYTOUCH = 0xA0
 UNMAPPED = ("keep", "drop")
 
 
 @dataclass(frozen=True)
-class DrumMap:
+class NoteMap:
+    """A drum map names every note it plays. A bass map plays any pitch in its ``range`` and names only the
+    keyswitches below it, with the ``controllers`` it reserves."""
     name: str
     source: str
     notes: Mapping[int, Mapping[str, Any]]
     prefer: Mapping[str, int]
+    kind: str = "drums"
+    range: tuple[int, int] | None = None
+    controllers: Mapping[int, str] = MappingProxyType({})
+
+    def playable(self, note: int) -> bool:
+        return self.range is not None and self.range[0] <= note <= self.range[1]
+
+    def is_keyswitch(self, note: int) -> bool:
+        return self.kind != "drums" and (self.term(note) or "").startswith("keyswitch")
 
     def term(self, note: int) -> str | None:
         """The note's term; a duplicate takes its original's."""
@@ -70,27 +83,43 @@ class DrumMap:
         return tuple(sorted(n for n in self.notes if (self.term(n) or "").split()[:1] == [word]))
 
 
+DrumMap = NoteMap
+
+
 @cache
-def drum_map(name: str) -> DrumMap:
-    if name not in NAMES:
-        raise ValueError(f"no note map {name!r}; one of {', '.join(NAMES)}")
+def note_map(name: str) -> NoteMap:
+    if name not in ALL_NAMES:
+        raise ValueError(f"no note map {name!r}; one of {', '.join(ALL_NAMES)}")
     raw = json.loads(files("groovebin").joinpath(f"data/maps/{name}.json").read_text(encoding="utf-8"))
     notes = {int(n): MappingProxyType(row) for n, row in raw["notes"].items()}
-    return DrumMap(name, raw["source"], MappingProxyType(notes), MappingProxyType(raw["prefer"]))
+    controllers = {int(cc): role for cc, role in raw.get("controllers", {}).items()}
+    return NoteMap(name, raw["source"], MappingProxyType(notes), MappingProxyType(raw["prefer"]),
+                   raw.get("kind", "drums"), tuple(raw["range"]) if "range" in raw else None,
+                   MappingProxyType(controllers))
 
 
-def maps() -> dict[str, DrumMap]:
+def drum_map(name: str) -> NoteMap:
+    m = note_map(name)
+    if m.kind != "drums":
+        raise ValueError(f"{name} is a {m.kind} map, not a drum map")
+    return m
+
+
+def maps() -> dict[str, NoteMap]:
     return {name: drum_map(name) for name in NAMES}
 
 
 def stroke(map_name: str, note: int) -> str | None:
-    return drum_map(map_name).stroke(note)
+    return note_map(map_name).stroke(note)
 
 
 @cache
 def translate(note: int, src: str, dst: str) -> int | None:
     """The ``dst`` note for ``src``'s ``note``, or None when no term leads there."""
-    term, target = drum_map(src).term(note), drum_map(dst)
+    source, target = note_map(src), note_map(dst)
+    term = source.term(note)
+    if term is None and source.playable(note):
+        return note if target.playable(note) else None
     words = term.split() if term else []
     fewest = 2 if len(words) > 1 and words[0] in NOT_STRIKES else 1
     while len(words) >= fewest:
@@ -158,12 +187,14 @@ def remap(part: Part, src: str, dst: str, *, channels: Iterable[int] | None = No
     ``src`` to ``dst`` on ``channels`` (all when None). A note with no counterpart is counted by
     pitch and kept at its pitch, or dropped with its aftertouch when ``unmapped`` is "drop"; nothing
     else changes."""
-    for name in (src, dst):
-        drum_map(name)
+    if note_map(src).kind != note_map(dst).kind:
+        raise ValueError(f"{src} is a {note_map(src).kind} map and {dst} a {note_map(dst).kind} map: a bass map and a "
+                         "drum map do not translate")
     check_unmapped(unmapped)
     if src == dst:
-        raise ValueError(f"a remap from {src} to {src} would still move notes: its duplicates and "
-                         "prefers translate too; name two different maps")
+        why = (" would still move notes: its duplicates and prefers translate too;" if note_map(src).kind == "drums"
+               else ":")
+        raise ValueError(f"a remap from {src} to {src}{why} name two different maps")
     scope = None if channels is None else set(channels)
     for channel in scope or ():
         if not 1 <= channel <= 16:

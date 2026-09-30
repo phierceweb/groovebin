@@ -132,7 +132,7 @@ def test_nested_overlaps_a_remap_creates_are_reported(tmp_path, capsys):
     source = mid(tmp_path, Part(480, (Note(0, 960, 10, 35, 90), Note(240, 240, 10, 36, 90))))
     rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2", "-o", tmp_path / "out.mid")
     assert rc == 0
-    assert "1 same-pitch note pair(s) start inside a longer one and end before it" in text
+    assert "1 same-pitch note pair(s) now start inside a longer one and end before it" in text
 
 
 def test_a_track_with_notes_on_several_channels_still_needs_a_channel(tmp_path, capsys):
@@ -176,7 +176,7 @@ def test_the_nested_warning_covers_a_track_the_remap_did_not_touch(tmp_path, cap
     rc, text, _ = run(capsys, "remap", source, "--from", "gm", "--to", "addictive-drums-2",
                       "--track", "1", "-o", out)
     assert rc == 0
-    assert "1 same-pitch note pair(s)" in text
+    assert "1 note-off(s) in the input found more than one note of their pitch open" in text and "same-pitch" not in text
 
 
 def test_a_fold_spread_across_two_tracks_on_one_channel_is_named(tmp_path, capsys):

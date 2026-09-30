@@ -8,14 +8,17 @@ from __future__ import annotations
 import math
 import random
 import re
+import statistics
 from collections import Counter
 from collections.abc import Iterable
+from itertools import pairwise
 from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
 
 from ..events import Event, Note
 from ..maps import check_unmapped, drum_map, translate
+from .groove import HANDS, voices
 from ..song import Part, Song
 from .index import MAX_BARS, PPQ
 from .pattern import SIXTEENTH, bar_ticks, meter_text, pattern
@@ -76,6 +79,8 @@ class Phrase:
     tempo: float
     map: str
     unmapped_rule: str = "keep"
+    crashes: tuple[int, ...] = ()
+    level: float | None = None
 
     @property
     def ticks(self) -> int:
@@ -174,25 +179,82 @@ def humanise(notes: Iterable[Note], rng: random.Random, end: int, *, timing: int
                     velocity=min(max(n.velocity + rng.randint(-velocity, velocity), 1), 127)) for n in notes]
 
 
+def _level(notes: list[Note], map_name: str) -> float | None:
+    kick, snare = families(map_name)
+    velocities = [n.velocity for n in notes if n.pitch in kick or n.pitch in snare]
+    return statistics.median(velocities) if velocities else None
+
+
+def levelled(bars: list[list[Note]], maps: list[str]) -> tuple[list[list[Note]], float | None]:
+    """Each bar's velocities scaled so its kick-and-snare median meets the first bar's that has one, and that
+    median; a bar with no kick or snare is left as it is."""
+    levels = [_level(bar, m) for bar, m in zip(bars, maps, strict=True)]
+    target = next((lv for lv in levels if lv), None)
+    if target is None:
+        return bars, None
+    return [[replace(n, velocity=min(max(round(n.velocity * target / lv), 1), 127)) for n in bar] if lv else bar
+            for bar, lv in zip(bars, levels, strict=True)], target
+
+
+def crashed(picks: list[Pick], bars: list[list[Note]], maps: list[str]) -> tuple[list[list[Note]], tuple[int, ...]]:
+    """A crash — the bar's map's ``cymbal 1`` — on the downbeat of each bar after a fill, at the velocity of the
+    loudest note there and on its channel (the bar's, else the fill's), and the bars (0-based) that took one. It
+    takes a hat or ride stroke's place; a bar with a cymbal on its downbeat already is left alone."""
+    bars, added = list(bars), []
+    for k in range(1, len(picks)):
+        kit = drum_map(maps[k])
+        crash, on = kit.find("cymbal 1"), [n for n in bars[k] if n.tick < SIXTEENTH // 2]
+        if not picks[k - 1].fill or crash is None or any(n.pitch in kit.family("cymbal") for n in on):
+            continue
+        hands = voices(maps[k])
+        velocity = max((n.velocity for n in on), default=max((n.velocity for n in bars[k - 1]), default=100))
+        kept = [n for n in bars[k] if not (n.tick < SIXTEENTH // 2 and hands.get(n.pitch) == HANDS)]
+        channel = next((group[0].channel for group in (on, bars[k], bars[k - 1]) if group), 10)
+        bars[k] = [*kept, Note(0, SIXTEENTH, channel, crash, velocity)]
+        added.append(k)
+    return bars, tuple(added)
+
+
+def _ended(notes: list[Note]) -> list[Note]:
+    """Each note ending by the next start of its channel and pitch, so a reader pairs every note-off with its own."""
+    order: dict[tuple[int, int], list[int]] = {}
+    for i, n in enumerate(notes):
+        order.setdefault((n.channel, n.pitch), []).append(i)
+    out = list(notes)
+    for same in order.values():
+        same.sort(key=lambda i: notes[i].tick)
+        for a, b in pairwise(same):
+            if notes[a].end > notes[b].tick:
+                out[a] = replace(notes[a], length=max(notes[b].tick - notes[a].tick, 1))
+    return out
+
+
 def phrase(pool: Pool, *, bars: int, seed: int, fills: bool = False, map_name: str | None = None,
-           unmapped: str = "keep") -> Phrase:
+           unmapped: str = "keep", crash: bool = False, level: bool = False) -> Phrase:
     """``bars`` bars from ``pool``, humanised and written in ``map_name`` (the pool's own map when it has
-    one); a note with no counterpart there is kept at its pitch or dropped, per ``unmapped``. The same
-    pool and seed give the same phrase."""
+    one); a note with no counterpart there is kept at its pitch or dropped, per ``unmapped``. With ``level``
+    the bars are `levelled` first, and with ``crash`` each fill is followed by one (`crashed`). Every note ends by
+    the next of its pitch (`_ended`). The same pool, seed and options give the same phrase; ``level`` leaves the
+    picks and the timing as they are."""
     check_unmapped(unmapped)
     if seed < 0:
         raise ValueError(f"seed {seed}: a seed is 0 or more")
     if map_name is None and len(pool.maps) > 1:
         raise ValueError(f"the pool's patterns follow {' and '.join(pool.maps)}: name the map to write the phrase in")
-    target = map_name or pool.maps[0]
+    target_map = map_name or pool.maps[0]
     rng = random.Random(seed)
     picks = generate(pool, bars, rng, fills=fills)
-    span = bar_ticks(pool.sig)
-    laid = [replace(n, tick=k * span + n.tick) for k, p in enumerate(picks) for n in p.bar.notes]
-    sources = [p.bar.map for p in picks for _n in p.bar.notes]
+    span, maps = bar_ticks(pool.sig), [p.bar.map for p in picks]
+    per_bar, target, added = [list(p.bar.notes) for p in picks], None, ()
+    if level:
+        per_bar, target = levelled(per_bar, maps)
+    if crash:
+        per_bar, added = crashed(picks, per_bar, maps)
+    laid = [replace(n, tick=k * span + n.tick) for k, bar in enumerate(per_bar) for n in bar]
+    sources = [maps[k] for k, bar in enumerate(per_bar) for _n in bar]
     notes, missing = [], Counter()
     for n, src in zip(humanise(laid, rng, bars * span), sources, strict=True):
-        new = n.pitch if src == target else translate(n.pitch, src, target)
+        new = n.pitch if src == target_map else translate(n.pitch, src, target_map)
         missing[n.pitch] += new is None
         if new is not None:
             notes.append(replace(n, pitch=new))
@@ -200,8 +262,8 @@ def phrase(pool: Pool, *, bars: int, seed: int, fills: bool = False, map_name: s
             notes.append(n)
     tempo = picks[0].bar.tempo
     usable = tempo is not None and math.isfinite(tempo) and 60_000_000 / 0xFFFFFF < tempo <= 60_000_000
-    return Phrase(seed, pool.sig, tuple(picks), tuple(notes), dict(sorted((+missing).items())),
-                  tempo if usable else DEFAULT_TEMPO, target, unmapped)
+    return Phrase(seed, pool.sig, tuple(picks), tuple(_ended(notes)), dict(sorted((+missing).items())),
+                  tempo if usable else DEFAULT_TEMPO, target_map, unmapped, added, target)
 
 
 def phrase_song(ph: Phrase) -> Song:

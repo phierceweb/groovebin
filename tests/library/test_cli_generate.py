@@ -72,3 +72,21 @@ def test_refusals_before_anything_is_written(db, tmp_path, capsys):
         rc, _, err = run(capsys, "generate", *argv, "--db", db)
         assert rc == 1 and message in err, err
     assert out.read_bytes() == b"keep" and not (tmp_path / "x.mid").exists()
+
+
+def test_crash_and_level_are_reported(db, tmp_path, capsys):
+    out = tmp_path / "joined.mid"
+    rc, text, _ = run(capsys, "generate", "--meter", "4/4", "--bars", 5, "--fills", "--category", "Rock",
+                      "--seed", 11, "--crash", "--level", "-o", out, "--db", db)
+    ph = phrase(load_pool(db, sig=(4, 4), category="Rock", fills=True), bars=5, seed=11, fills=True, crash=True,
+                level=True)
+    assert rc == 0
+    assert f"  velocities levelled to a kick and snare median of {ph.level:g}" in text.splitlines()
+    assert ("  a crash on the downbeat of bar 5, after the fill" in text.splitlines()) == (ph.crashes == (4,))
+    assert ph.crashes == (4,)
+
+
+def test_without_crash_and_level_nothing_is_said_of_them(db, tmp_path, capsys):
+    rc, text, _ = run(capsys, "generate", "--meter", "4/4", "--bars", 5, "--fills", "--category", "Rock",
+                      "--seed", 11, "-o", tmp_path / "plain.mid", "--db", db)
+    assert rc == 0 and not [line for line in text.splitlines() if line.startswith(("  velocities", "  a crash"))]

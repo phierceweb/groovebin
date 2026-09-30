@@ -1,9 +1,21 @@
 # groovebin
 
-MIDI files, note maps and a pattern library in Python. It reads and writes Standard MIDI Files,
-translates notes between instrument maps — General MIDI drums, Addictive Drums 2, Logic's Drum Kit
-Designer — transforms notes by selection (velocity curves, humanize, swing, note lengths), and indexes a folder of MIDI patterns so they can be searched, shown and recombined.
-Nothing needs a DAW or a plug-in installed or running.
+A drum groove programmed for one kit plays the wrong sounds on another, a folder of thousands of patterns can
+only be browsed by file name, and a bassline has to be written against the drums by hand. groovebin does these
+jobs on the MIDI files themselves, in Python, with no DAW or plug-in installed or running.
+
+It reads and writes Standard MIDI Files and keeps every event in them. It translates notes between instrument
+maps, so a groove made for one kit plays on another: General MIDI drums, Addictive Drums 2, Logic's Drum Kit
+Designer and its brush kits, and EZbass's keyswitches. It transforms notes by selection (velocity curves,
+humanize, swing, note lengths) and lays one part's feel on another. It indexes a folder of patterns so they can
+be searched by section, meter, tempo and feel, or ranked by how close their rhythm is to a groove you give it,
+and it strings real bars together into new phrases.
+
+For bass, it reads the chords a bassline implies, reports how a line sits with the kick and with the chords, and
+writes a new line over a drum part, by rules or by picking real bars from a bass library and moving them onto
+your chords. On the 1,256 grooves EZbass installs, the root it reads from each bassline matches the bass note of
+EZbass's own chord labels on 89.7% of beats; that is one vendor's library, and other styles may read differently.
+It calls a chord major or minor only where the bass plays the third.
 
 Status: alpha. Commands, the library API and the index format may change before 1.0.
 
@@ -22,8 +34,12 @@ Needs Python 3.12 or newer.
     groovebin index ~/Grooves --map addictive-drums-2
     groovebin search --role verse --meter 4/4 --tempo 90-110
     groovebin generate --meter 4/4 --bars 16 --fills --role verse -o verse.mid
+    groovebin search --like 3f2a9c --beat
+    groovebin feel programmed.mid --from played.mid --map gm -o felt.mid
+    groovebin bass --drums verse.mid --drum-map gm --chords "| Am | F G |" -o bass.mid
 
 Usage: [docs/usage.md](https://github.com/phierceweb/groovebin/blob/main/docs/usage.md).
+Python API: [docs/api.md](https://github.com/phierceweb/groovebin/blob/main/docs/api.md).
 Changes: [CHANGELOG.md](https://github.com/phierceweb/groovebin/blob/main/CHANGELOG.md).
 
 ## Develop

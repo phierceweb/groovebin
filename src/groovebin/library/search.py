@@ -1,22 +1,28 @@
-"""Queries over the pattern library index `index.build` writes: filtered search, one row by id, and
-a group by name."""
+"""Queries over the pattern library index `index.build` writes: filtered search, rows ranked by how near
+their rhythm is to a query, one row by id, and a group by name."""
 
 from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
 
+from .groove import SUBDIVISIONS, Bar, distance, from_json
 from .index import COLUMNS, SCHEMA
+from .sidecar import QUALITIES
 
 SHOWN = ("id", "library", "category", "group_name", "variant", "role", "meter", "tempo", "is_beat", "is_fill",
-         "swing", "intensity", "bars", "ppq", "map", "file")
-NUMBER = r"(\d+(?:\.\d*)?|\.\d+)"
+         "swing", "intensity", "bars", "ppq", "map", "file", "density", "syncopation", "subdivision", "swing8",
+         "swing16", "lag", "chords", "changes", "quality")
+NUMBER = r"(-?(?:\d+(?:\.\d*)?|\.\d+))"
 _RANGE = re.compile(rf"^{NUMBER}\s*-\s*{NUMBER}$")
 _COMPARE = re.compile(rf"^(<=|>=|<|>)\s*{NUMBER}$")
 _EXACT = re.compile(rf"^{NUMBER}$")
 DECIMALS = 3
 SHOWN_GROUPS = 5
+MAX_QUERY_BARS = 16
+RANGES = ("tempo", "swing", "intensity", "density", "syncopation", "swing8", "swing16", "lag", "changes")
 
 
 def _half(digits: str) -> float:
@@ -61,11 +67,23 @@ def like(text: str) -> str:
     return "%" + re.sub(r"([\\%_])", r"\\\1", text) + "%"
 
 
-def _where(*, category: str | None = None, meter: str | None = None, tempo: str | None = None,
-           fill: bool | None = None, beat: bool | None = None, swing: str | None = None, intensity: str | None = None,
-           group: str | None = None, variant: str | None = None, library: str | None = None,
-           role: str | None = None) -> tuple[str, list]:
+def _where(*, category: str | None = None, meter: str | None = None, fill: bool | None = None,
+           beat: bool | None = None, group: str | None = None, variant: str | None = None, library: str | None = None,
+           role: str | None = None, subdivision: str | None = None, quality: str | None = None,
+           **ranges: str | None) -> tuple[str, list]:
+    if unknown := sorted(set(ranges) - set(RANGES)):
+        raise TypeError(f"no filter {', '.join(unknown)}")
     where, args = ["error IS NULL"], []
+    if subdivision is not None:
+        if subdivision not in SUBDIVISIONS:
+            raise ValueError(f"no subdivision {subdivision!r}: {', '.join(SUBDIVISIONS[:-1])} or {SUBDIVISIONS[-1]}")
+        where.append("subdivision = ?")
+        args.append(subdivision)
+    if quality is not None:
+        if quality not in QUALITIES:
+            raise ValueError(f"no quality {quality!r}: major or minor")
+        where.append("quality = ?")
+        args.append(quality)
     for column, value in (("category", category), ("meter", meter), ("library", library), ("role", role)):
         if value is not None:
             where.append(f"{column} = ? COLLATE NOCASE")
@@ -78,7 +96,7 @@ def _where(*, category: str | None = None, meter: str | None = None, tempo: str 
         if value is not None:
             where.append(f"{column} = ?")
             args.append(int(value))
-    for column, value in (("tempo", tempo), ("swing", swing), ("intensity", intensity)):
+    for column, value in ranges.items():
         if value is not None:
             condition, bounds = parse_range(value)
             where.append(condition.format(col=column))
@@ -97,17 +115,60 @@ def _query(db_path: Path, sql: str, args: list) -> list[dict]:
 MAX_LIMIT = 2**63 - 1                    # sqlite's LIMIT is a signed 64-bit integer
 
 
+def _checked(limit: int | None) -> int | None:
+    if limit is not None and not 0 <= limit <= MAX_LIMIT:
+        raise ValueError(f"a limit of {limit} rows is not 0 to {MAX_LIMIT}")
+    return limit
+
+
 def search(db_path: Path, *, limit: int | None = 50, **filters: str | bool | None) -> list[dict]:
     """Rows matching every filter given, the columns a listing shows. ``category``, ``meter``, ``library``
     and ``role`` match whole values, case aside; ``group`` and ``variant`` match a substring; ``fill`` and
-    ``beat`` a flag; ``tempo``, ``swing`` and ``intensity`` take `parse_range` syntax."""
+    ``beat`` a flag; ``subdivision`` one of `groove.SUBDIVISIONS`; the `RANGES` take `parse_range` syntax."""
     where, args = _where(**filters)
     sql = f"SELECT {', '.join(SHOWN)} FROM beats WHERE {where} ORDER BY library, category, group_name, variant, key"
-    if limit is not None:
-        if not 0 <= limit <= MAX_LIMIT:
-            raise ValueError(f"a limit of {limit} rows is not 0 to {MAX_LIMIT}")
+    if _checked(limit) is not None:
         sql += f" LIMIT {int(limit)}"
     return _query(db_path, sql, args)
+
+
+def query_bars(bars: Iterable[Bar]) -> tuple[tuple[Bar, ...], int]:
+    """A query's distinct bars that strike anything, in order and at most `MAX_QUERY_BARS` of them, and how
+    many distinct ones it had."""
+    distinct = [b for b in dict.fromkeys(bars) if b.kick or b.snare or b.hands]
+    return tuple(distinct[:MAX_QUERY_BARS]), len(distinct)
+
+
+def similar(db_path: Path, query: Iterable[Bar], *, limit: int | None = 50, exclude: str | None = None,
+            voices: Iterable[int] | None = None, **filters: str | bool | None) -> list[dict]:
+    """Rows matching every filter, nearest ``query``'s `query_bars` first by `groove.distance` over ``voices``
+    (all by default), each with its ``distance``. ``exclude`` is a key to leave out; so is a row with no bar the
+    length of a query bar."""
+    bars, _ = query_bars(query)
+    if not bars:
+        raise ValueError("the query has no kick, snare or hands onset to compare")
+    _checked(limit)
+    voices = None if voices is None else tuple(voices)
+    where, args = _where(**filters)
+    ranked = []
+    for row in _query(db_path, f"SELECT key, rhythm, {', '.join(SHOWN)} FROM beats WHERE {where} AND rhythm IS NOT NULL",
+                      args):
+        key, grid = row.pop("key"), from_json(row.pop("rhythm"))
+        if key != exclude and (d := distance(bars, grid, voices)) is not None:
+            ranked.append((d, key, row | {"distance": d}))
+    ranked.sort(key=lambda found: found[:2])
+    return [row for _d, _key, row in ranked[:limit]]
+
+
+def pattern_rhythm(db_path: Path, pattern_id: str) -> tuple[str, tuple[Bar, ...]]:
+    """A pattern's key and rhythm by its id; refused, with the reason, when the row has none."""
+    row = get(db_path, pattern_id)
+    if not row["rhythm"]:
+        why = ("it was not parsed" if row["error"] else "it holds no notes" if not row["bars"]
+               else "its index was built without --map" if row["map"] is None
+               else f"its map, {row['map']}, is not a drum map")
+        raise ValueError(f"pattern {row['id']} has no rhythm to compare: {why}")
+    return row["key"], from_json(row["rhythm"])
 
 
 def full_rows(db_path: Path, **filters: str | bool | None) -> list[dict]:

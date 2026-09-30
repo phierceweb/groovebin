@@ -179,7 +179,8 @@ def test_links_are_checked(tmp_path):
 
 
 LIBRARY = ROOT / "src" / "groovebin"
-BOUNDARY = {"cli.py", "_parsers.py", "_views.py", "_views_library.py"}
+BOUNDARY = {"cli.py", "_parsers.py", "_views.py", "_views_library.py", "_views_bass.py", "_files.py",
+            "_commands_library.py", "_commands_bass.py"}
 PART_WORD = re.compile(r"(?<![a-z])part(?![a-z])", re.I)
 
 
