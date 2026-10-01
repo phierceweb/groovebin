@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.4.1] — 2026-09-30
+
+### Changed
+- Requires pf-core `~=0.24.0`.
+
 ## [0.4.0] — 2026-09-30
 
 ### Added
