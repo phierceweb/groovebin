@@ -8,7 +8,7 @@ import math
 import re
 
 from ..events import MAX_VLQ
-from .edits import grid_ticks
+from .edits import grid_ticks, note_value
 from .select import ALIASES, FIELDS, OPS, Operation, Range
 
 CONDITION = re.compile(r"^(\w+)(!=|<=|>=|=|<|>)(.+)$")
@@ -38,10 +38,11 @@ def whole_number(text: str) -> int:
 
 
 def ticks_of(text: str, ppq: int) -> int:
-    """``240``, ``240t`` or a note value ``1/16`` as ticks at ``ppq``."""
+    """``240``, ``240t`` or a note value ``1/16`` or ``1/16t`` as ticks at ``ppq``."""
     t = text.strip()
     if t.startswith("1/"):
-        return grid_ticks(whole_number(t[2:]), ppq)
+        denominator, triplet = note_value(t)
+        return grid_ticks(denominator, ppq, triplet=triplet)
     try:
         return int(t.removesuffix("t"))
     except ValueError:

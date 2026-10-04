@@ -16,6 +16,8 @@ from .pattern import SIXTEENTH, signatures
 from .blobs import unpack_notes
 from .index import PPQ
 
+FEEL = (*FEATURES, "accent")
+
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
 
@@ -85,7 +87,7 @@ def show(row: dict, label: Callable[[int], str | None] | None = None) -> str:
     tempo = f"{row['tempo']:g} bpm" if row["tempo"] is not None else "no tempo"
     head = f"{row['id']}  {title or row['file']}  {row['meter'] or '?'}  {tempo}  {row['bars']} bar(s)"
     body = lanes(row, label) if row.get("map") in NAMES or label else piano_roll(row)
-    return "\n".join([head, *feel(row), *harmony(row), *body])
+    return "\n".join([head, *feel(row), *accents(row), *harmony(row), *body])
 
 
 def harmony(row: dict) -> list[str]:
@@ -101,5 +103,18 @@ def feel(row: dict) -> list[str]:
     """The row's feel columns as one line, named as `search` filters them; none for a row without them."""
     if row.get("density") is None:
         return []
-    cells = ("-" if row[c] is None else f"{row[c]:g}" if isinstance(row[c], float) else str(row[c]) for c in FEATURES)
-    return ["feel  " + "  ".join(f"{c} {v}" for c, v in zip(FEATURES, cells, strict=True))]
+    cells = ("-" if row.get(c) is None else f"{row[c]:g}" if isinstance(row[c], float) else str(row[c]) for c in FEEL)
+    return ["feel  " + "  ".join(f"{c} {v}" for c, v in zip(FEEL, cells, strict=True))]
+
+
+def accents(row: dict) -> list[str]:
+    """Each voice's accent profile for its bar length with the most struck steps, a step's velocity over the
+    voice's mean in percent; none for a row without one."""
+    if not row.get("accents"):
+        return []
+    lines = []
+    for voice, lengths in json.loads(row["accents"]).items():
+        steps = max(lengths, key=lambda k: sum(v is not None for v in lengths[k]))
+        cells = " ".join("  ." if v is None else f"{round(v * 100):3d}" for v in lengths[steps])
+        lines.append(f"accent {voice:5s} {cells}")
+    return lines

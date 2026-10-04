@@ -14,7 +14,7 @@ from .sidecar import QUALITIES
 
 SHOWN = ("id", "library", "category", "group_name", "variant", "role", "meter", "tempo", "is_beat", "is_fill",
          "swing", "intensity", "bars", "ppq", "map", "file", "density", "syncopation", "subdivision", "swing8",
-         "swing16", "lag", "chords", "changes", "quality")
+         "swing16", "lag", "accent", "chords", "changes", "quality")
 NUMBER = r"(-?(?:\d+(?:\.\d*)?|\.\d+))"
 _RANGE = re.compile(rf"^{NUMBER}\s*-\s*{NUMBER}$")
 _COMPARE = re.compile(rf"^(<=|>=|<|>)\s*{NUMBER}$")
@@ -22,7 +22,7 @@ _EXACT = re.compile(rf"^{NUMBER}$")
 DECIMALS = 3
 SHOWN_GROUPS = 5
 MAX_QUERY_BARS = 16
-RANGES = ("tempo", "swing", "intensity", "density", "syncopation", "swing8", "swing16", "lag", "changes")
+RANGES = ("tempo", "swing", "intensity", "density", "syncopation", "swing8", "swing16", "lag", "accent", "changes")
 
 
 def _half(digits: str) -> float:

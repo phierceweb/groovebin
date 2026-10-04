@@ -48,8 +48,13 @@ def parse_rhythm(text: str) -> tuple[tuple[Bar, ...], tuple[int, ...]]:
     return tuple(bars), tuple(sorted(lanes))
 
 
+def lane(bar: Bar, voice: int) -> str:
+    """One voice's steps in ``bar``: ``x`` struck, ``.`` not; ``voice`` an index in `VOICES`."""
+    return "".join("x" if bar[voice + 1] >> s & 1 else "." for s in range(bar.steps))
+
+
 def rhythm_text(bars: Sequence[Bar]) -> str:
-    """``bars`` as the lanes `parse_rhythm` reads, every voice given."""
-    return " ".join(f"{voice}=" + "|".join("".join("x" if b[v + 1] >> s & 1 else "." for s in range(b.steps))
-                                           for b in bars)
-                    for v, voice in enumerate(VOICES))
+    """``bars`` as the lanes `parse_rhythm` reads, every voice given; a bar with no steps has none to type."""
+    if empty := next((k for k, b in enumerate(bars, 1) if not b.steps), None):
+        raise ValueError(f"bar {empty} holds no whole number of sixteenths: it has no lanes to type")
+    return " ".join(f"{voice}=" + "|".join(lane(b, v) for b in bars) for v, voice in enumerate(VOICES))

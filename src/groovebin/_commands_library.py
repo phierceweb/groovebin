@@ -5,21 +5,23 @@ from __future__ import annotations
 import argparse
 import json
 import secrets
+from pathlib import Path
 
 from pf_core.exceptions import InvalidInputError
 from pf_core.utils.io import atomic_write_bytes
 
-from . import _views_library
-from ._files import is_file, named, refuse_overwrite
+from . import _views, _views_library
+from ._files import is_file, named, read_song, refuse_overwrite, track_indices
 from ._parsers import default_db
 from .library.generate import load_pool, parse_meter, phrase, phrase_song
-from .library.groove import file_rhythm
-from .library.groove_text import parse_rhythm, rhythm_text
+from .library.groove import VOICES, file_rhythm, landing_bar, rhythm
+from .library.groove_text import lane, parse_rhythm, rhythm_text
 from .library.index import build
 from .library.search import get, pattern_rhythm, query_bars, search, similar
 from .library.show import show
 from .maps import NAMES, stroke
 from .midi import write
+from .song import meter_map, skipped_meters
 
 
 def cmd_index(args: argparse.Namespace) -> int:
@@ -39,7 +41,8 @@ def cmd_search(args: argparse.Namespace) -> int:
                "fill": args.fill or None, "beat": args.beat or None, "swing": args.swing, "intensity": args.intensity,
                "group": args.group, "variant": args.variant, "library": args.library, "subdivision": args.subdivision,
                "density": args.density, "syncopation": args.syncopation, "swing8": args.swing8,
-               "swing16": args.swing16, "lag": args.lag, "quality": args.quality, "changes": args.changes}
+               "swing16": args.swing16, "lag": args.lag, "accent": args.accent, "quality": args.quality,
+               "changes": args.changes}
     like, like_file = args.like, args.like is not None and is_file(args.like)
     if like is not None and args.rhythm is not None:
         raise InvalidInputError("rank by one query: --like or --rhythm")
@@ -88,4 +91,24 @@ def cmd_generate(args: argparse.Namespace) -> int:
     atomic_write_bytes(args.out, write(phrase_song(ph)))
     print("\n".join(_views_library.picked(pool, ph)))
     print(f"out : {args.out}")
+    return 0
+
+
+def cmd_anchors(args: argparse.Namespace) -> int:
+    song, name = read_song(args.input), Path(args.input).name
+    notes = [n for i in track_indices(song, args.track, name) for n in song.tracks[i].notes]
+    if not notes:
+        raise InvalidInputError(f"{name} has no notes on the tracks read")
+    if args.bars is not None and args.bars < 1:
+        raise InvalidInputError(f"--bars {args.bars}: 1 or more")
+    meters = meter_map(song)
+    last = landing_bar(max(n.tick for n in notes), meters)
+    bars = rhythm(notes, meters, min(args.bars or last, last), args.map)
+    if args.json:
+        print(json.dumps([{"bar": k, "steps": b.steps, **{voice: lane(b, v) for v, voice in enumerate(VOICES)}}
+                          for k, b in enumerate(bars, 1)], indent=1))
+        return 0
+    print("\n".join(_views_library.anchored(name, bars, meters)))
+    if skipped := skipped_meters(song):
+        print(_views.meter_warning(skipped))
     return 0

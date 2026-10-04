@@ -6,8 +6,11 @@
 - [Commands](#commands)
   - [groovebin remap](#groovebin-remap)
   - [groovebin notes](#groovebin-notes)
+  - [groovebin tempo](#groovebin-tempo)
+  - [groovebin key](#groovebin-key)
   - [groovebin transform](#groovebin-transform)
   - [groovebin feel](#groovebin-feel)
+  - [groovebin anchors](#groovebin-anchors)
   - [groovebin roots](#groovebin-roots)
   - [groovebin analyze](#groovebin-analyze)
   - [groovebin bass](#groovebin-bass)
@@ -73,22 +76,66 @@ with no note before them the file dropped on read. All three count the whole fil
 
     groovebin notes IN.mid --map drum-kit-designer
 
-Lists the file's format, PPQ, starting tempo and meter, then each track's notes with bar position,
-channel, pitch, velocity and length. A time signature the file's PPQ cannot hold in whole ticks, or one
-too short to read, or one with a zero numerator or a denominator past 64, cannot be counted in: the
-listing says how many were skipped, and bars follow the meters that remain. The lengths listed are the
-ones first-in-first-out pairing chose: where a note-off found more than one note of its pitch open, or
-the file dropped a note-off with no note before it, the listing says how many, as `groovebin remap` does.
+Lists the file's format, PPQ, starting tempo and meter, and the key signature it starts in when it has one,
+then each track's notes with bar position, time (`m:ss.mmm`, each stretch at its own tempo), channel, pitch,
+velocity and length. A time signature the file's PPQ cannot hold in whole ticks, or one too short to read, or
+one with a zero numerator or a denominator past 64, cannot be counted in: the listing says how many were
+skipped, and bars follow the meters that remain. A key signature that is not two bytes, has more than seven
+sharps or flats, or a mode other than major or minor is skipped, and the listing says how many; so is a tempo
+event of 0 or not three bytes long. The lengths listed are the ones first-in-first-out pairing chose: where a
+note-off found more than one note of its pitch open, or the file dropped a note-off with no note before it, the
+listing says how many, as `groovebin remap` does.
 
 | Flag | |
 |---|---|
 | `--map MAP` | name each note's stroke from this map (`-` when the map has none) |
 | `--track N` | list only track N, counting from 1; repeat for more tracks |
 
+### groovebin tempo
+
+    groovebin tempo IN.mid
+    groovebin tempo IN.mid --set 100@9 --ramp 17-25:100-132 -o OUT.mid
+
+Lists a file's tempo points, each with its bar and its time in minutes and seconds. A run of three or more
+points at most a quarter note apart whose tempo never turns back, ends where it did not start, and keeps to a
+straight line prints as one ramp. A tempo event of 0, or not three bytes long, is skipped and counted. With
+`--set` or `--ramp` it writes a copy: every tempo event leaves every track and the new tempo map goes into track
+1, the conductor track of a format 1 file; every other event is kept, and a skipped tempo event is left out. An
+edit first writes the tempo in force at the file's start as a point there, so the bars before the edit keep their
+timing. Edits apply in the order given.
+
+| Flag | |
+|---|---|
+| `--set BPM@BAR` | this tempo from that bar line until the next tempo point; a point already on that line is replaced |
+| `--ramp BAR-BAR:BPM-BPM[/STEP]` | the points from the first bar line through the second replaced by a ramp, a point every STEP (a note value such as `1/16` or `1/8t`, or ticks; default `1/16`; at most a quarter note, and shorter than the bars' span), ending on the second tempo |
+| `-o`, `--out FILE` | the file to write; needed with `--set` or `--ramp`, never the input |
+| `--force` | replace an existing `--out` file |
+
+### groovebin key
+
+    groovebin key IN.mid --map ezbass
+    groovebin key IN.mid --set "A minor@1" --set "C major@17" -o OUT.mid
+
+Lists a file's key signatures with their bars, then the scale its notes hold: Krumhansl and Kessler's key
+profiles against each pitch class's held length, named as a major key and its relative minor, since notes alone
+seldom say which of the two is home. With `--set` it writes a copy whose key signatures are the file's own plus
+those set — one set on a bar line that already has one replaces it — all in track 1; no note moves. A file's key
+signature says only major or minor, so `--set` takes those; the tonic's spelling is kept (`Gb` writes six flats,
+`F#` six sharps). A key signature it cannot read is skipped and counted, and left out of a written copy.
+
+| Flag | |
+|---|---|
+| `--set KEY@BAR` | a major or minor key from that bar line, e.g. `"A minor@1"` or `"Bb@9"`; repeat for more |
+| `--map MAP` | the bass map the notes follow; its keyswitches stay out of the scale; a drum map is refused |
+| `--track N` | find the scale in track N only, counting from 1; repeat for more tracks |
+| `-o`, `--out FILE` | the file to write; needed with `--set`, never the input |
+| `--force` | replace an existing `--out` file |
+
 ### groovebin transform
 
     groovebin transform IN.mid -o OUT.mid --select "pitch=36-47,velocity<40" --op add:velocity=10
     groovebin transform IN.mid -o OUT.mid --track 2 --preset humanize --seed 7
+    groovebin transform IN.mid -o OUT.mid --track 2 --map ezbass --preset change-key="E minor"
     groovebin transform --presets
 
 Logic's Transform window on a file: `--select` picks notes by their fields, each `--op` changes one field of
@@ -108,7 +155,8 @@ signatures were skipped, as `groovebin notes` does. All three count the whole fi
 A condition is `FIELD=VALUE`, `FIELD=LO-HI`, or `FIELD` with `<`, `<=`, `>`, `>=` or `!=` and a value; several are
 joined by commas and must all hold. The fields: `position` in bars, where a whole number means the whole bar
 (`9-12` runs from bar 9's line up to bar 13's, `9.5` is that spot; bar 1 is the first); `pitch`; `velocity`; `length` in ticks
-(`240`, `240t`) or as a note value (`1/16`); `channel`.
+(`240`, `240t`) or as a note value (`1/16`, or a triplet `1/16t`: two thirds of it, refused where the file's PPQ
+cannot hold it in whole ticks); `channel`.
 
 An operation is `OP:FIELD[=VALUE]`: `set`, `add`, `mul` (a factor), `min` (raise what is below), `max` (cut what
 is above), `random` (±VALUE, uniform), `flip` (mirror around VALUE), `quantize` (a position to the nearest VALUE
@@ -133,7 +181,28 @@ band is 1–127.
 | `half-speed`, `double-speed` | — | every position and length doubled or halved — the whole track, events too; no `--select` |
 | `legato` | `100%` | each note lasts that share of the way to the next note's start (100% touches it, more overlaps) |
 | `staccato` | `50%` | each note's length times that share |
-| `swing` | `58%[:1/16]` | notes on the grid, every second grid line of the bar late by grid × (2·swing − 1); 50% is straight; no `--select` |
+| `swing` | `58%[:1/16]`, a straight grid | notes on the grid, every second grid line of the bar late by grid × (2·swing − 1); 50% is straight; no `--select` |
+| `scale-quantize` | a key, optional | notes outside the key moved to the nearer scale note inside 0–127, down when both are as near |
+| `diatonic` | steps, required (`+2`, `-1`) | notes moved along the key's scale; a note outside it keeps its offset above the scale note below it |
+| `change-key` | a key, required | every note to its degree in the new key, the shorter way round (down at a tritone); the whole track; no `--select` |
+
+A key is a note and a scale — `A minor`, `F# dorian`, `Bb` for B-flat major — from major, minor, dorian,
+phrygian, lydian, mixolydian, locrian, harmonic-minor, melodic-minor, major-pentatonic, minor-pentatonic and
+blues. The key the notes are in is `--key` when given, else the file's key signatures, each from its own bar,
+else one estimated from the transformed tracks' notes, which names a major key and its relative minor; the run
+says which on its first line; it says too how many key signatures it could not read. `scale-quantize=KEY` needs
+none of these, and `--key` is refused when no preset reads it. After `half-speed` or `double-speed`, a preset
+that reads the file's key signatures is refused when they change key, since the notes have moved off them: put
+the preset first, or run it on the copy. `change-key` reads one key for the whole run, the one in force at the
+first note of the tracks it transforms, and moves every track by the same interval; from an estimate it takes
+the notes in the target's mode, which works for the seven modes and needs `--key` for the rest. When the new
+key is major or minor, the key signature in force at that first note becomes the new key's, and the track's
+other key signatures move by the same interval — except on a change of mode, which says nothing about where
+they go: those are left as they were, and the run says how many. It says too when key signatures sit on a track
+it did not transform. With no `--select`, polyphonic aftertouch moves with its notes. With `--map` naming a
+bass map, keyswitches never change pitch, in these presets and in every pitch operation, while the other
+operations of a pass still move them; a step that would move a played note onto a keyswitch is refused. A drum
+map refuses these presets.
 
 | Flag | |
 |---|---|
@@ -144,6 +213,8 @@ band is 1–127.
 | `--preset NAME[=VALUE]` | a preset; repeat for more |
 | `--presets` | list the presets and exit; takes no file, flag or operation |
 | `--seed N\|random` | the seed for `random` and `humanize`; 0 by default so a run repeats, `random` prints the one it chose |
+| `--key KEY` | the key the notes are in, for `scale-quantize`, `diatonic` and `change-key` |
+| `--map MAP` | the note map the notes follow: a bass map's keyswitches never change pitch |
 | `--force` | replace an existing `--out` file |
 
 ### groovebin feel
@@ -181,10 +252,31 @@ back as it was. A `--from` ending in `.mid`, or holding a `/`, that is not a fil
 | `--force` | replace an existing `--out` file |
 | `--db FILE` | the index file, for a pattern id |
 
+### groovebin anchors
+
+    groovebin anchors groove.mid --map addictive-drums-2
+    groovebin anchors groove.mid --map gm --bars 4 --json
+
+Prints where a drum file's kick, snare and hands strike, a line per bar on a sixteenth grid — the lanes
+`search` ranks by and `bass` follows — then the whole file's lanes on one last line, which `search --rhythm`
+reads as it is. The snare lane holds the sidestick; the hands are the hi-hat, less its pedal, and the ride. A
+note rounding onto a bar line starts the next bar, the last note's included. A bar whose meter holds no whole
+number of sixteenths prints empty and says so, and the last line then says there are no lanes to search with,
+as it does for a file with no kick, snare or hands note. Fills are not marked: telling one from notes alone
+reads too many tom grooves and phrase ends as fills to be worth printing.
+
+| Flag | |
+|---|---|
+| `--map MAP` | the drum map the notes follow (required) |
+| `--bars N` | the first N bars, at most through the bar the last note lands in (default: through that bar) |
+| `--track N` | read only track N, counting from 1; repeat for more tracks |
+| `--json` | a record per bar: its number, its steps and a lane per voice |
+
 ### groovebin roots
 
     groovebin roots bassline.mid
     groovebin roots groove.mid --map ezbass --track 2 --json
+    groovebin roots bassline.mid --map ezbass -o roots.mid
 
 Prints the chords a bassline implies, one chart cell a bar: `| Am | F G | E5 |`. A bar's root is the pitch
 class held longest in it, the note on the bar counting three times; a bar splits into two chords when each
@@ -204,11 +296,20 @@ bassline seldom says which of the two is home: across EZbass's grooves, 96.9% of
 played over have their root in the scale found, while the tonic itself matches the first chord's root only
 about two times in three.
 
+With `-o` it also writes a file of the chart's roots: a note per chord at its slash bass, else its root, in
+`--octave` (default 2, notes 36–47), velocity 100 on channel 1, as long as the chord, after a first track
+holding the source's tempo, meter and key signatures. With `--map`, an `--octave` that puts a root on one of
+the map's keyswitches is refused. `bass --roots-from` reads it back as the same roots; a third or a slash comes
+back as a power chord on that root, since a line of roots holds no third.
+
 | Flag | |
 |---|---|
 | `--map MAP` | the bass map the notes follow; its keyswitches are left out |
 | `--track N` | read only this track; repeat for more |
 | `--json` | each chord with its start and end ticks and its bar |
+| `-o`, `--out FILE` | also write the roots as a MIDI file |
+| `--octave N` | the octave of the `-o` file's notes, C4 being 60 |
+| `--force` | replace an existing `--out` file |
 
 ### groovebin analyze
 
@@ -317,12 +418,13 @@ A folder's patterns are labelled from their paths:
   only when the file has none, and a file with neither is in 4/4, the file format's default. A number
   pair with a numerator of 1 (`1-8`) is not read as a meter
 
-With `--map`, the index also records each pattern's feel, read through the map: which sixteenths the
-kick, the snare (sidestick included) and the hands (the hi-hat but not its pedal, and the ride) strike in
-each bar, and the numbers `search` filters on and `show` prints — density, syncopation, subdivision,
-eighth and sixteenth swing, and how far behind the beat the snare sits. A library indexed without a map
-has none of these. Every pattern keeps its channel events — controllers, aftertouch, pitch bend, program
-changes — beside its notes. An index written by an earlier groovebin is refused; build it again.
+With `--map`, the index also records each pattern's feel, read through the map: which sixteenths the kick, the
+snare (sidestick included) and the hands (the hi-hat but not its pedal, and the ride) strike in each bar, and
+the numbers `search` filters on and `show` prints — density, syncopation, subdivision, eighth and sixteenth
+swing, how far behind the beat the snare sits, and how much harder the hands strike on the beat than off it,
+with each voice's accent profile. A library indexed without a map has none of these. Every pattern keeps its
+channel events — controllers, aftertouch, pitch bend, program changes — beside its notes. An index written by
+an earlier groovebin is refused; build it again.
 
 A folder index also reads the chord file EZbass keeps beside each of its grooves (`.midchordinfo`), from
 the folder you pass and nowhere else: the chords the groove was played over, how often they change a bar,
@@ -360,6 +462,10 @@ The feel filters read what the index recorded with `--map`:
 - **swing16**: where the off-beat sixteenth sits in its eighth, read the same way
 - **lag**: how far behind the beat the snare strikes, in ticks at 960 PPQ, over strokes within an eighth
   of a beat of one; below 0 is ahead of it
+- **accent**: the hands' mean velocity on the beats less their mean off them, in velocity units — above 0 the
+  beat is accented, below 0 the off-beat is pushed. Off a beat is 0.4 to 0.72 of the way through it, the window
+  swing8 reads, so a shuffle's swung eighth counts; a compound meter's beat is its dotted quarter and its
+  off-beats the eighths between, and in 5/8 or 7/8 the beat is the eighth
 
 `--swing` is the source's own label, a `MidiDb.csv`'s Swing column. Measured against the notes of
 Addictive Drums 2's own library, its values below 0.5 go with swung eighths and those above 0.5 with
@@ -399,6 +505,7 @@ search with.
 | `--swing8 RANGE` | as `--tempo` |
 | `--swing16 RANGE` | as `--tempo` |
 | `--lag RANGE` | as `--tempo`; a bound may be negative: `<-10`, and with `=` for a range that starts with one: `--lag=-20--5` |
+| `--accent RANGE` | as `--tempo`; a bound may be negative, as `--lag` |
 | `--quality major\|minor` | the first chord a groove was played over, from its chord file |
 | `--changes RANGE` | chord changes a bar, 0 for one chord throughout, as `--tempo` |
 | `--like ID\|FILE` | rank by rhythm against a pattern's id or a `.mid` file |
@@ -412,15 +519,17 @@ search with.
 
     groovebin show 3f2a9c
 
-Draws one pattern, a cell per sixteenth and `|` at each bar: a lane per note number named by its
-drum map, or, for a pattern with no drum map, a piano roll with note names and held notes (`=`).
-`X` is velocity 100 and up, `x` 64–99, `o` below. A pattern indexed with a map has a `feel` line first:
-its density, syncopation, subdivision, swing8, swing16 and lag, named as `search` filters them, `-`
-where there was nothing to measure. A pattern with a chord file has a `chords` line: each chord and the bar
-it starts in.
+Draws one pattern, a cell per sixteenth and `|` at each bar: a lane per note number named by its drum map, or,
+for a pattern with no drum map, a piano roll with note names and held notes (`=`). `X` is velocity 100 and up,
+`x` 64–99, `o` below. A pattern indexed with a map has a `feel` line first: its density, syncopation,
+subdivision, swing8, swing16, lag and accent, named as `search` filters them, `-` where there was nothing to
+measure. Then an `accent` line per voice: each sixteenth's mean velocity over the voice's own mean, in percent,
+`.` where it never strikes, for its bar length with the most struck steps. A pattern with a chord file has a
+`chords` line: each chord and the bar it starts in.
 
 With `--rhythm`, it prints only the pattern's kick, snare and hands as the lanes `search --rhythm` reads,
-all on one line.
+all on one line. A pattern with a bar that holds no whole number of sixteenths has no lanes to
+print, and says so.
 
 | Flag | |
 |---|---|

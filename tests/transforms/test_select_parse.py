@@ -66,3 +66,9 @@ def test_the_tick_limit_is_put_only_on_a_value_a_file_has_to_hold():
     assert parse_operation("set", "velocity=" + "9" * 310, ppq=960).value == int("9" * 310)
     with pytest.raises(ValueError, match="is not a grid of 1/1 to 1/64"):
         parse_operation("add", "position=1/300000000", ppq=960)
+
+
+def test_ticks_of_reads_triplet_note_values():
+    assert (ticks_of("1/8t", 960), ticks_of("1/16t", 960)) == (320, 160)
+    assert parse_operation("quantize", "position=1/8t", ppq=960).value == 320
+    assert parse_select("length=1/16t-1/8t", ppq=960)["length"].hi == 320

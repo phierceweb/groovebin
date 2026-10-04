@@ -7,17 +7,19 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+from ..harmony import Scale, parse_key
 from ..song import Part
 from ..timing import MeterMap
-from .edits import Mask, PartWording, grid_ticks, masked, note_lengths, stretch, swing
+from .edits import Mask, PartWording, grid_ticks, masked, note_lengths, note_value, stretch, swing
 from .select import Operation, apply_all, humanize, velocity_band
 from .select_parse import number, tick_value, whole_number
+from .theory import Hold, Keys, change_key, diatonic, scale_quantize
 
 
 @dataclass(frozen=True)
 class Preset:
     name: str
-    takes: str                   # none | int | int? | float | ticks | lo..hi | percent | swing | humanize
+    takes: str                   # none | int | int? | float | ticks | lo..hi | percent | swing | humanize | key? | steps | key
     default: int | float | tuple[int | float, ...] | None   # the value when none is given; None with a value kind means required
     about: str
 
@@ -39,9 +41,16 @@ PRESETS = (
     Preset("legato", "percent", 100.0, "each note lasts PERCENT of the way to the next note's start (100 touches it)"),
     Preset("staccato", "percent", 50.0, "each note's length times PERCENT"),
     Preset("swing", "swing", (0.58, 16), "notes on the grid, every second line late: PERCENT[:1/N] (50% is straight, 1/16 the default grid)"),
+    Preset("scale-quantize", "key?", None, "notes outside the key moved to the nearer scale note, down on a tie; "
+           "KEY such as A minor, else the notes' own key"),
+    Preset("diatonic", "steps", None, "notes moved N steps along the key's scale; a note outside it keeps its offset"),
+    Preset("change-key", "key", None, "every note to its degree in KEY, the shorter way — the whole track, key "
+           "signatures too"),
 )
 BY_NAME = {p.name: p for p in PRESETS}
-WHOLE_PART = ("half-speed", "double-speed", "swing")
+WHOLE_PART = ("half-speed", "double-speed", "swing", "change-key")
+THEORY = ("scale-quantize", "diatonic", "change-key")
+STRAIGHT_SWING = "swing takes a straight grid: on a triplet grid every second line falls on a beat"
 HUMANIZE_KEYS = ("pos", "vel", "len")
 
 
@@ -70,9 +79,13 @@ def parse_value(preset: Preset, text: str | None, *, ppq: int) -> object:
             raise ValueError(f"{preset.name} takes no value")
         return None
     if text is None:
-        if preset.default is None and preset.takes != "int?":
+        if preset.default is None and preset.takes not in ("int?", "key?"):
             raise ValueError(f"{preset.name} needs a value: {preset.name}=VALUE")
         return preset.default
+    if preset.takes in ("key", "key?"):
+        return parse_key(text)
+    if preset.takes == "steps":
+        return whole_number(text)
     if preset.takes in ("int", "int?"):
         return whole_number(text)
     if preset.takes == "float":
@@ -89,7 +102,11 @@ def parse_value(preset: Preset, text: str | None, *, ppq: int) -> object:
     if preset.takes == "swing":
         amount, _, grid = text.partition(":")
         value = _percent(amount) / 100
-        den = whole_number(grid.strip().removeprefix("1/")) if grid else preset.default[1]
+        if not grid:
+            return value, preset.default[1]
+        den, triplet = note_value(grid if grid.strip().startswith("1/") else f"1/{grid.strip()}")
+        if triplet:
+            raise ValueError(STRAIGHT_SWING)
         grid_ticks(den, ppq)
         return value, den
     return _humanize(text, ppq, preset.default)
@@ -130,13 +147,20 @@ def operations(name: str, value: object = None) -> list[Operation]:
 
 
 def run(part: Part, mask: Mask | None, name: str, value: object = None, *, seed: int | random.Random = 0,
-        meters: MeterMap | None = None, start: int = 0) -> Part:
+        meters: MeterMap | None = None, start: int = 0, keys: Keys | None = None, hold: Hold | None = None,
+        at: int | None = None) -> Part:
     """Preset ``name`` on the selected notes (every note when ``mask`` is None); a `WHOLE_PART` preset
-    takes the whole part and refuses a mask; swing needs ``meters`` and the part's ``start`` on them."""
+    takes the whole part and refuses a mask; swing needs ``meters`` and the part's ``start`` on them; the theory
+    presets read the notes' key from ``keys`` — key points on the song's timeline, from ``start`` — or scale-quantize
+    from its own value, never move a ``hold`` pitch, and change-key reads its source at part tick ``at``."""
     if name not in BY_NAME:
         raise ValueError(f"no preset {name!r}: {', '.join(BY_NAME)}")
     if name in WHOLE_PART and mask is not None:
         raise PartWording(f"{name} takes the whole part; it has no selection")
+    if name in THEORY:
+        if start and keys is not None and not isinstance(keys, Scale):
+            keys = [(t - start, scale) for t, scale in keys]
+        return _theory(part, mask, name, value, keys, hold or (lambda pitch: False), at)
     if name == "half-speed":
         return stretch(part, 2.0)
     if name == "double-speed":
@@ -144,7 +168,9 @@ def run(part: Part, mask: Mask | None, name: str, value: object = None, *, seed:
     if name == "swing":
         if meters is None:
             raise ValueError("swing needs a meter map")
-        amount, den = value if value is not None else BY_NAME[name].default
+        amount, den, *triplet = value if value is not None else BY_NAME[name].default
+        if triplet and triplet[0]:
+            raise ValueError(STRAIGHT_SWING)
         return swing(part, grid_ticks(den, part.ppq), amount, meters, start=start)
     if name == "legato":
         return note_lengths(part, mask, legato=(100.0 if value is None else value) / 100)
@@ -156,3 +182,19 @@ def run(part: Part, mask: Mask | None, name: str, value: object = None, *, seed:
     chosen = frozenset(masked(part, mask))
     return apply_all(part, chosen, operations(name, BY_NAME[name].default if value is None else value), seed=seed,
                      meters=meters, start=start)
+
+
+def _theory(part: Part, mask: Mask | None, name: str, value: object, keys: Keys | None, hold: Hold,
+            at: int | None) -> Part:
+    def known() -> Keys:
+        if keys is None:
+            raise ValueError(f"{name} needs the key the notes are in")
+        return keys
+
+    if name == "scale-quantize":
+        return scale_quantize(part, mask, value if value is not None else known(), hold=hold)
+    if value is None:
+        raise ValueError(f"{name} needs a value: {name}=VALUE")
+    if name == "diatonic":
+        return diatonic(part, mask, value, known(), hold=hold)
+    return change_key(part, known(), value, hold=hold, at=at)

@@ -3,7 +3,7 @@
 import pytest
 
 from groovebin.library.groove import Bar
-from groovebin.library.groove_text import parse_rhythm, rhythm_text
+from groovebin.library.groove_text import lane, parse_rhythm, rhythm_text
 
 
 def bits(*steps):
@@ -35,3 +35,13 @@ def test_a_rhythm_prints_as_the_lanes_it_reads_from():
     text = rhythm_text(bars)
     assert text == "kick=x.......x.......|x.....x.x....... snare=....x.......x...|....x.......x... hands=................|................"
     assert parse_rhythm(text)[0] == bars
+
+
+def test_a_lane_is_one_voices_steps_of_one_bar():
+    bar = Bar(8, bits(0, 4), 0, bits(0, 2, 4, 6))
+    assert (lane(bar, 0), lane(bar, 1), lane(bar, 2)) == ("x...x...", "........", "x.x.x.x.")
+
+
+def test_a_bar_with_no_steps_has_no_lanes_to_type():
+    with pytest.raises(ValueError, match="bar 2 holds no whole number of sixteenths"):
+        rhythm_text([Bar(4, 1, 0, 0), Bar(0, 0, 0, 0)])

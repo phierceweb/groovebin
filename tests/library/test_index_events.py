@@ -39,10 +39,10 @@ def test_a_pattern_gives_each_bar_its_events(tmp_path):
     assert [e.tick for e in p.bar_events(0)] == [100, 120] and [e.tick for e in p.bar_events(1)] == [160, 360]
 
 
-def test_the_index_is_schema_4(tmp_path):
+def test_the_index_is_schema_5(tmp_path):
     con = sqlite3.connect(indexed(tmp_path))
     try:
         assert con.execute("SELECT value FROM meta WHERE name = 'schema'").fetchone() == (str(SCHEMA),)
     finally:
         con.close()
-    assert SCHEMA == 4
+    assert SCHEMA == 5

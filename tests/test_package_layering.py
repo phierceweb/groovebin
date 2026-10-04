@@ -13,10 +13,10 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "groovebin"
 BOUNDARY = 3
 RANKS = {
     "cli": BOUNDARY, "_parsers": BOUNDARY, "_views": BOUNDARY, "_files": BOUNDARY, "_commands_library": BOUNDARY,
-    "_commands_bass": BOUNDARY,
+    "_commands_bass": BOUNDARY, "_commands_timing": BOUNDARY, "_commands_transform": BOUNDARY,
     "library": 2,
     "maps": 1, "transforms": 1, "harmony": 1,
-    "midi": 0, "events": 0, "timing": 0, "song": 0,
+    "midi": 0, "events": 0, "timing": 0, "timing_ramps": 0, "song": 0,
 }
 QUIET_MODULES = {"logging"}
 ENV_ATTRS = {"environ", "getenv", "putenv"}

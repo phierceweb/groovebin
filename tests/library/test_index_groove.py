@@ -5,6 +5,7 @@ import pytest
 from smf_bytes import csv_row, pattern_file, write_csv
 
 from groovebin.library.index import SCHEMA, build
+from groovebin.library.search import get, search
 
 KICK, SNARE, HAT = 36, 38, 42
 BACKBEAT = [(t, p, 100, 60) for bar in (0, 3840) for t, p in
@@ -78,3 +79,16 @@ def test_the_index_records_its_schema(tmp_path):
 @pytest.mark.parametrize("column", GROOVE)
 def test_every_feel_column_exists_even_when_empty(tmp_path, column):
     assert column in rows(folder_index(tmp_path, map_name=None))["backbeat.mid"]
+
+
+def test_the_index_records_the_hands_accent_and_search_filters_on_it(tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "on.mid").write_bytes(pattern_file(960, [(t, 42, 110 if t % 960 == 0 else 70, 60) for t in range(0, 3840, 480)]))
+    (lib / "off.mid").write_bytes(pattern_file(960, [(t, 42, 60 if t % 960 == 0 else 100, 60) for t in range(0, 3840, 480)]))
+    db = tmp_path / "x.sqlite"
+    build(db, folder=lib, map_name="gm")
+    rows = {r["file"]: r for r in search(db, limit=None)}
+    assert (rows["on.mid"]["accent"], rows["off.mid"]["accent"]) == (40.0, -40.0)
+    assert [r["file"] for r in search(db, accent=">0", limit=None)] == ["on.mid"]
+    assert json.loads(get(db, rows["on.mid"]["id"])["accents"])["hands"]["16"][0] == 1.22

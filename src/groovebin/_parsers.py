@@ -43,15 +43,16 @@ def build_parser() -> argparse.ArgumentParser:
     notes.add_argument("--track", type=int, action="append", help="list only this track, from 1 (repeatable)")
 
     _transform(sub)
+    _timing(sub)
     _library(sub)
     return ap
 
 
 class _Step(argparse.Action):
-    """--op and --preset in command-line order, as (kind, text)."""
+    """Repeatable flags kept in command-line order, as (flag, text)."""
 
     def __call__(self, parser, namespace, values, option_string=None):
-        namespace.steps = [*(namespace.steps or []), (option_string.lstrip("-"), values)]
+        setattr(namespace, self.dest, [*(getattr(namespace, self.dest) or []), (option_string.lstrip("-"), values)])
 
 
 def _transform(sub) -> None:
@@ -74,7 +75,34 @@ def _transform(sub) -> None:
     tr.add_argument("--preset", dest="steps", action=_Step, metavar="NAME[=VALUE]", help="a preset by name (repeatable); --presets lists them")
     tr.add_argument("--presets", action="store_true", help="list the presets and exit")
     tr.add_argument("--seed", default="0", metavar="N|random", help="the seed for random and humanize (default 0, so a run repeats)")
+    tr.add_argument("--key", metavar="KEY",
+                    help='the key the notes are in, e.g. "A minor" or "F# dorian", for scale-quantize, diatonic and the '
+                         "key change-key moves from (default: the file's key signatures, else one estimated)")
+    tr.add_argument("--map", choices=ALL_NAMES,
+                    help="the note map the notes follow: a bass map's keyswitches never change pitch; a drum map "
+                         "refuses the theory presets")
     tr.add_argument("--force", action="store_true", help="overwrite an existing --out file")
+
+
+def _timing(sub) -> None:
+    te = sub.add_parser("tempo", help="a file's tempo points and ramps, or a copy with tempo changes written in")
+    te.add_argument("input", help="the .mid file to read")
+    te.add_argument("--set", dest="edits", action=_Step, metavar="BPM@BAR",
+                    help="this tempo from this bar line until the next tempo point (repeatable)")
+    te.add_argument("--ramp", dest="edits", action=_Step, metavar="BAR-BAR:BPM-BPM[/STEP]",
+                    help="a ramp from the first bar line to the second, a point each STEP: a note value or ticks "
+                         "(default 1/16) (repeatable)")
+    te.add_argument("-o", "--out", help="the .mid file to write; needed with --set or --ramp")
+    te.add_argument("--force", action="store_true", help="overwrite an existing --out file")
+
+    ke = sub.add_parser("key", help="a file's key signatures and the scale its notes hold, or a copy with signatures set")
+    ke.add_argument("input", help="the .mid file to read")
+    ke.add_argument("--set", dest="keys", action="append", metavar="KEY@BAR",
+                    help='a major or minor key from that bar line, e.g. "A minor@1" or "Bb@9" (repeatable)')
+    ke.add_argument("--map", choices=ALL_NAMES, help="the bass map the notes follow; its keyswitches stay out of the scale")
+    ke.add_argument("--track", type=int, action="append", metavar="N", help="find the scale in this track only (repeatable)")
+    ke.add_argument("-o", "--out", help="the .mid file to write; needed with --set")
+    ke.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
 
 def _db(parser: argparse.ArgumentParser) -> None:
@@ -108,6 +136,9 @@ def _library(sub) -> None:
     se.add_argument("--swing8", metavar="RANGE", help="where the off-beat eighth sits: 0.5 straight, 0.667 a triplet shuffle")
     se.add_argument("--swing16", metavar="RANGE", help="where the off-beat sixteenth sits in its eighth, as --swing8")
     se.add_argument("--lag", metavar="RANGE", help="the snare behind the beat in ticks at 960 PPQ, below 0 ahead of it")
+    se.add_argument("--accent", metavar="RANGE",
+                    help="the hands' mean velocity on the beats less their mean off them, 0.4 to 0.72 of the way "
+                         "through a beat: above 0 the beat is accented, below 0 the off-beat, as --tempo")
     se.add_argument("--quality", choices=("major", "minor"), help="the first chord a groove was played over")
     se.add_argument("--changes", metavar="RANGE", help="chord changes a bar, 0 for one chord throughout, as --tempo")
     se.add_argument("--like", metavar="ID|FILE", help="rank by rhythm, nearest first, against a pattern or a .mid file")
@@ -159,6 +190,13 @@ def _library(sub) -> None:
     fe.add_argument("--force", action="store_true", help="overwrite an existing --out file")
     _db(fe)
 
+    anc = sub.add_parser("anchors", help="where a drum file's kick, snare and hands strike, a sixteenth grid a bar")
+    anc.add_argument("input", help="the .mid file to read")
+    anc.add_argument("--map", required=True, choices=NAMES, help="the drum map the notes follow")
+    anc.add_argument("--bars", type=int, metavar="N", help="the first N bars (default: through the last note)")
+    anc.add_argument("--track", type=int, action="append", metavar="N", help="read only this track (repeatable)")
+    anc.add_argument("--json", action="store_true", help="a record per bar, as JSON")
+
     ro = sub.add_parser("roots", help="the chords a bassline implies, as a chart",
                         description="Each bar's root is the pitch class held longest, the note on the bar or half bar "
                                     "counting three times; a bar splits in half when each half has its own root. A "
@@ -167,6 +205,9 @@ def _library(sub) -> None:
     ro.add_argument("--map", choices=ALL_NAMES, help="the bass map its notes follow; its keyswitches are left out")
     ro.add_argument("--track", type=int, action="append", metavar="N", help="read only this track (repeatable)")
     ro.add_argument("--json", action="store_true", help="each chord with its ticks and bar, as JSON")
+    ro.add_argument("-o", "--out", help="also write a .mid file of a note per chord, at its slash bass or else its root")
+    ro.add_argument("--octave", type=int, metavar="N", help="the -o file's octave, C4 being 60 (default 2: notes 36-47)")
+    ro.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
     an = sub.add_parser("analyze", help="what a bassline does: its rhythm, against drums and against chords")
     an.add_argument("input", help="the MIDI file holding the bassline")

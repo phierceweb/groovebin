@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections import Counter
 
+from .harmony import signature_name
 from .maps import stroke
-from .song import Song, meter_map, tempo_map
+from .song import Song, key_map, meter_map, tempo_map
 
 
 def joined(items: list[object]) -> str:
@@ -37,6 +38,21 @@ def meter_warning(count: int) -> str:
             "the meters that remain")
 
 
+def clock(seconds: float) -> str:
+    """``m:ss.mmm``, a minus sign below 0."""
+    ms = round(abs(seconds) * 1000)
+    return f"{'-' if seconds < 0 else ''}{ms // 60_000}:{ms % 60_000 / 1000:06.3f}"
+
+
+def tempo_warning(count: int) -> str:
+    return f"{count} tempo event(s) were skipped — a tempo of 0, or not three bytes"
+
+
+def key_warning(count: int) -> str:
+    return (f"{count} key signature(s) were skipped — not two bytes, more than seven sharps or flats, or a mode "
+            "other than major or minor")
+
+
 def remap_report(*, notes: int, unmapped: Counter, src: str, dst: str, nested: int, orphans: int,
                  rule: str = "keep", folded: dict[int, list[int]] | None = None, ambiguous: int = 0) -> list[str]:
     line = f"{notes - sum(unmapped.values())} of {notes} note(s) remapped {src} -> {dst}"
@@ -56,17 +72,20 @@ def remap_report(*, notes: int, unmapped: Counter, src: str, dst: str, nested: i
 
 
 def listing(name: str, song: Song, tracks: list[int], map_name: str | None) -> list[str]:
-    meters = meter_map(song)
+    meters, tempos = meter_map(song), tempo_map(song)
     num, den = meters.meter_at(0)
-    lines = [f"{name}: format {song.format}, PPQ {song.ppq}, {len(song.tracks)} track(s), "
-             f"{tempo_map(song).bpm(0):g} bpm, {num}/{den}"]
+    head = (f"{name}: format {song.format}, PPQ {song.ppq}, {len(song.tracks)} track(s), "
+            f"{tempos.bpm(0):g} bpm, {num}/{den}")
+    if (key := key_map(song).at(0)) is not None:
+        head += f", {signature_name(*key)}"
+    lines = [head]
     for i in tracks:
         part = song.tracks[i]
         label = f" {part.name!r}" if part.name else ""
         lines.append(f"track {i + 1}{label}: {len(part.notes)} note(s), {len(part.events)} other event(s)")
         for n in part.notes:
-            line = (f"  bar {meters.bar(n.tick):8.3f}  ch {n.channel:2d}  note {n.pitch:3d}  "
-                    f"vel {n.velocity:3d}  len {n.length:6d}")
+            line = (f"  bar {meters.bar(n.tick):8.3f}  {clock(tempos.seconds(n.tick, song.ppq)):>9}  "
+                    f"ch {n.channel:2d}  note {n.pitch:3d}  vel {n.velocity:3d}  len {n.length:6d}")
             if map_name:
                 line += f"  {stroke(map_name, n.pitch) or '-'}"
             lines.append(line)
@@ -79,7 +98,7 @@ def presets(items) -> list[str]:
     for p in items:
         if p.takes == "none":
             value = ""
-        elif p.takes == "int?":
+        elif p.takes in ("int?", "key?"):
             value = "  (=VALUE, optional)"
         elif p.default is None:
             value = "  (=VALUE, required)"

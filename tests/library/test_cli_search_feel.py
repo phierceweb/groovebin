@@ -100,7 +100,8 @@ def test_show_prints_the_feel_in_search_terms(capsys, db):
     (shuffle,) = rows(capsys, db, "--subdivision", "triplets")
     rc, out, _err = run(capsys, "show", shuffle["id"], "--db", db)
     assert rc == 0
-    assert out.splitlines()[1] == "feel  density 12  syncopation 0  subdivision triplets  swing8 0.667  swing16 -  lag 0"
+    assert out.splitlines()[1] == ("feel  density 12  syncopation 0  subdivision triplets  swing8 0.667  swing16 -  lag 0  "
+                                   "accent 0")
 
 
 def test_rhythm_ranks_by_the_lanes_typed(capsys, db):
@@ -124,3 +125,10 @@ def test_show_rhythm_prints_lanes_that_search_reads_back(capsys, db):
     assert rc == 0 and out.startswith("kick=x......x........|x......x........ snare=")
     found = rows(capsys, db, "--rhythm", out.strip())
     assert (found[0]["id"], found[0]["distance"]) == (push["id"], 0)
+
+
+def test_the_accent_help_names_the_window_off_the_beat():
+    from groovebin._parsers import build_parser
+    search = next(a for a in build_parser()._subparsers._group_actions[0].choices.values() if a.prog.endswith("search"))
+    (accent,) = [a for a in search._actions if "--accent" in a.option_strings]
+    assert "0.4 to 0.72" in accent.help and "eighths" not in accent.help

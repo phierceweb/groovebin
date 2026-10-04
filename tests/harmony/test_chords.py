@@ -1,8 +1,6 @@
 import pytest
 
-from groovebin.events import Note
-from groovebin.harmony import (Chord, chart, note_number, parse_chord, pitch_class, pitch_name, revoice, scale_name,
-                               scale_of)
+from groovebin.harmony import Chord, chart, note_number, parse_chord, pitch_class, pitch_name, revoice
 
 CHORDS = {
     "C": Chord(0, "maj"), "Am": Chord(9, "min"), "F#m7": Chord(6, "min7"), "Bb7": Chord(10, "7"),
@@ -84,29 +82,6 @@ def test_revoice_moves_a_note_from_its_chord_to_another(pitch, source, target, e
     """The bass note goes to the new bass note, a third, fifth or seventh to the new chord's own, anything else
     moves with the root; the octave keeps the line's contour, moved the shorter way."""
     assert revoice(pitch, source, target) == expected
-
-
-def held(pitches, length=480):
-    return [Note(i * length, length, 1, p, 90) for i, p in enumerate(pitches)]
-
-
-def test_the_scale_a_line_holds_is_named_by_its_major():
-    assert scale_of(held([48, 50, 52, 53, 55, 57, 59, 60])) == 0
-    assert scale_of(held([45, 48, 50, 52, 55, 57, 45, 45])) == 0
-    assert scale_of(held([43, 47, 50, 54, 55, 57, 43])) == 7
-
-
-def test_a_line_of_one_pitch_class_has_no_scale():
-    assert scale_of(held([45, 57, 45])) is None
-    assert scale_of([]) is None
-
-
-def test_scale_names():
-    assert scale_name(0) == "C major / A minor" and scale_name(7) == "G major / E minor" and scale_name(10) == "Bb major / G minor"
-
-
-def test_a_line_holding_every_pitch_class_as_long_has_no_scale():
-    assert scale_of(held(range(40, 52))) is None
 
 
 @pytest.mark.parametrize(("name", "number"), [("Cb1", 23), ("B#0", 24), ("Cb4", 59), ("B#3", 60), ("B1", 35),

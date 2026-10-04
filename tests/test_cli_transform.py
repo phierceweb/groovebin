@@ -209,7 +209,8 @@ def test_the_written_file_reads_back_to_the_notes_the_transform_made(tmp_path, c
 
 
 HOSTILE = {"none": "5", "int": "9" * 310, "int?": "9" * 310, "float": "-1", "ticks": "9" * 310,
-           "lo..hi": "-5..500", "percent": "9" * 310, "swing": "9" * 310, "humanize": "pos=" + "9" * 310}
+           "lo..hi": "-5..500", "percent": "9" * 310, "swing": "9" * 310, "humanize": "pos=" + "9" * 310,
+           "key?": "H klingon", "steps": "9" * 310, "key": "Cb klingon"}
 
 
 def test_no_preset_value_reaches_the_user_as_a_traceback(tmp_path, capsys, monkeypatch):

@@ -5,7 +5,7 @@ import pytest
 from groovebin.events import Event, Note
 from groovebin.song import Part
 from groovebin.timing import MeterMap
-from groovebin.transforms import delete, grid_ticks, merge, quantize, scale_velocity, shift, transpose
+from groovebin.transforms import delete, grid_ticks, merge, note_value, quantize, scale_velocity, shift, transpose
 
 
 def note(at, pitch=60, velocity=80, length=240, channel=1):
@@ -177,3 +177,19 @@ def test_swing_is_a_quantize_with_the_odd_lines_late():
     out = swing(part(note(250, 60), note(470, 62), note(250, 64, length=5)), 240, 0.6, FOUR_FOUR)
     assert [(n.tick, n.pitch) for n in out.notes] == [(288, 60), (288, 64), (480, 62)]
     assert swing(part(note(3840 + 250)), 240, 0.75, MeterMap(960, ((0, 3, 4),))).notes[0].tick == 2880 + 960 + 240 + 120
+
+
+def test_a_triplet_grid_is_two_thirds_of_its_note_value():
+    assert (grid_ticks(8, 960, triplet=True), grid_ticks(16, 960, triplet=True), grid_ticks(2, 96, triplet=True)) \
+        == (320, 160, 128)
+    with pytest.raises(ValueError, match="1/1t is not a triplet of 1/2t to 1/64t"):
+        grid_ticks(1, 960, triplet=True)
+    with pytest.raises(ValueError, match="1/16t at PPQ 100 is not a whole number of ticks"):
+        grid_ticks(16, 100, triplet=True)
+
+
+def test_note_value_reads_straight_and_triplet_values():
+    assert (note_value("1/16"), note_value(" 1/8t "), note_value("1/64t")) == ((16, False), (8, True), (64, True))
+    for bad in ("16", "1/", "1/t", "1/8tt", "2/8"):
+        with pytest.raises(ValueError, match="is not a note value like 1/16 or 1/8t"):
+            note_value(bad)

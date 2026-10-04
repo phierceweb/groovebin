@@ -10,6 +10,7 @@ This page is about code that imports `groovebin`. For the `groovebin` command, s
 
 - [The rules every layer keeps](#the-rules-every-layer-keeps)
 - [Files and the note model](#files-and-the-note-model)
+- [Timing](#timing)
 - [Note maps](#note-maps)
 - [Transforms](#transforms)
 - [Harmony](#harmony)
@@ -40,6 +41,16 @@ Rules the model keeps, which callers get wrong:
 - Ticks are the file's own. Use `song.rescale(part, ppq)` to bring parts from files of different PPQ onto one timeline, and `song.meter_map(song)` / `tempo_map(song)` for bars and tempo; bar 1 starts at tick 0.
 - `song.merged(song)` gives every track as one `Part`, for anything that reads a whole file.
 
+## Timing
+
+`groovebin.timing` holds a file's tempo, meter and key signatures as maps over its ticks; `song.tempo_map(song)`, `song.meter_map(song)` and `song.key_map(song)` build them.
+
+- `TempoMap.seconds(tick, ppq)` and `TempoMap.tick_at(seconds, ppq)` convert ticks and seconds, each stretch at its own tempo. A tick before the first tempo point runs at that point's tempo; a map with no points is 120 bpm.
+- `TempoMap.ramps(ppq)` reads tempo ramps out of the points: three or more points at most a quarter note apart whose bpm never turns back, ends where it did not start, and keeps to a straight line within 0.01 bpm and a microsecond's rounding; two ramps can share the point where they meet. A ramp is a view — `seconds` always counts the points themselves.
+- `TempoMap.with_point(tick, bpm)` and `TempoMap.with_ramp(start, end, from_bpm, to_bpm, step)` return a new map; an edit first writes the tempo in force at tick 0 as a point there, so the bars before it keep their timing. `ramp_points` gives a ramp's points, one each `step` ticks at the line's bpm and the target bpm at the end, which `ramps` reads back as the same ramp when the step is at most a quarter note; a span of one step or less is refused, since its two points are a tempo step. Two points at one tick count once, as the later. `song.tempo_map(song)` skips a tempo of 0 or one not three bytes long, and `song.skipped_tempos(song)` counts those.
+- `KeyMap` holds key signatures as (tick, sharps, minor), flats below 0. `at(tick)` is None before the first signature — a file that never says its key has none. `song.key_map(song)` reads them from every track, `song.skipped_keys(song)` counts the ones it could not read, and `song.key_signature(event)` reads one event.
+- `song.with_tempo(song, tempos)` and `song.with_keys(song, keys)` give the song with those maps as its only tempo or key-signature events, all in track 1; every other event stays as it was.
+
 ## Note maps
 
 A note map says what each note plays. Load one with `maps.note_map(name)`; use `maps.drum_map(name)` where only a drum map will do, since it refuses a bass map by name. `maps.NAMES` lists the drum maps, `maps.BASS_NAMES` the bass maps, `maps.ALL_NAMES` both.
@@ -55,6 +66,7 @@ A note map says what each note plays. Load one with `maps.note_map(name)`; use `
 - Select with `select(part, **conditions)`, which gives note indices, and pass them as a mask to `apply_all(part, mask, operations, seed=, meters=)`. A mask of None means every note.
 - Carry note identity across several passes in `Note.tag`: every transform keeps a note's tag, while indices change when notes re-sort.
 - A refusal whose wording names the Part is a `transforms.PartWording`, a `ValueError`. Rewrite its wording for your users if you call the Part something else; leave every other message alone, since it may quote the user's own input.
+- `transforms.theory` moves notes in a key: `scale_quantize(part, mask, keys)`, `diatonic(part, mask, steps, keys)` and `change_key(part, source, target)`. `keys` is one `harmony.Scale` or tick-ordered key points, so a modulating part keeps its keys; `change_key` reads its source at `at`, the part's first note by default, and when the target is major or minor rewrites the signature in force there as the target's and moves the part's other signatures by the same interval — except on a change of mode, which leaves those in other keys as they were. `scale_quantize` never picks a note outside 0–127. With no mask, polyphonic aftertouch moves with its notes. Pass `hold=note_map(name).is_keyswitch` so a bass map's keyswitches keep their pitch.
 
 ## Harmony
 
@@ -64,6 +76,7 @@ A note map says what each note plays. Load one with `maps.note_map(name)`; use `
 - `roots(notes, meters, bars)` gives the chords a bassline implies, and `chart_text` prints them as a chart. Expect the root to match EZbass's labelled bass note on about nine beats in ten, and a power chord (`A5`) where the bass never plays the third; see [usage.md](usage.md#groovebin-roots) for the measurement.
 - `scale_of(notes)` names the scale a line holds by the tonic of its major key; `scale_name` gives the major and relative-minor pair. Do not present the tonic as the key — a bassline seldom says which of the pair is home.
 - `revoice(pitch, source, target)` moves a note played over one chord to fit another, keeping its role: the bass note, a third, fifth or seventh.
+- `Scale(tonic, kind)` is a key: major, minor, the other five modes, harmonic and melodic minor, the two pentatonics and blues. Read one with `parse_key("F# dorian")`. `below(pitch)` and `at(step)` count scale steps, which the theory transforms move by. `signature()` gives a major or minor key's (sharps, minor) from its tonic as spelled — `Gb` is −6, `F#` +6 — and `from_signature` / `signature_name` read one back.
 
 ## The pattern library
 
@@ -75,7 +88,7 @@ A note map says what each note plays. Load one with `maps.note_map(name)`; use `
 
 ## Drum feel
 
-`library.groove` reads what a drum part plays through its map: `rhythm` gives each bar's kick, snare and hands onsets on a sixteenth grid, and `features` its density, syncopation, subdivision, eighth and sixteenth swing and snare lag. `bar_distance` and `distance` compare rhythms as `search --like` does; pass `voices` to count only some of them. `library.groove_text.parse_rhythm` reads typed lanes into bars and the voices they give, and `rhythm_text` writes bars back out. `library.feel` takes a groove template from one part (`template`, `file_template`, `pattern_template`) and applies it to another (`apply_feel`).
+`library.groove` reads what a drum part plays through its map: `rhythm` gives each bar's kick, snare and hands onsets on a sixteenth grid, and `features` its density, syncopation, subdivision, eighth and sixteenth swing and snare lag. `bar_distance` and `distance` compare rhythms as `search --like` does; pass `voices` to count only some of them. `library.groove_text.parse_rhythm` reads typed lanes into bars and the voices they give, and `rhythm_text` writes bars back out, refusing a bar with no steps. `library.feel` takes a groove template from one part (`template`, `file_template`, `pattern_template`) and applies it to another (`apply_feel`). `library.accent` gives a part's accent profile — each voice's velocity per sixteenth over its own mean — and `accent`, the hands' beat-over-off-beat difference the index stores and `search --accent` filters on. `groove.bar_steps` and `groove.compound` give a meter's sixteenths a bar and whether its beat is a dotted quarter, and `groove.landing_bar` the bar a note counts in once it rounds to the grid.
 
 ## Bass
 

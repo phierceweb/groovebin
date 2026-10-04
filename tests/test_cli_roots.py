@@ -4,7 +4,7 @@ import json
 
 from groovebin.cli import main
 from groovebin.events import Event, Note
-from groovebin.midi import write
+from groovebin.midi import read, write
 from groovebin.song import Part, Song
 
 BAR = 3840
@@ -60,3 +60,44 @@ def test_tracks_can_be_named(tmp_path, capsys):
     assert rc == 1 and "no notes" in err
     rc, out, _err = run(capsys, "roots", f, "--track", 1)
     assert rc == 0 and out.splitlines()[1] == "| A5 |"
+
+
+def test_out_writes_a_root_note_per_chord_with_the_sources_conductor(tmp_path, capsys):
+    f = line(tmp_path / "b.mid", (0, BAR, 45), (BAR, 1920, 41), (BAR + 1920, 1920, 43))
+    out = tmp_path / "roots.mid"
+    rc, text, err = run(capsys, "roots", f, "-o", out)
+    assert (rc, err) == (0, "") and text.splitlines()[-1] == f"out : {out}"
+    song = read(out.read_bytes())
+    assert [(n.tick, n.length, n.pitch) for n in song.tracks[1].notes] == \
+        [(0, BAR, 45), (BAR, 1920, 41), (BAR + 1920, 1920, 43)]
+    assert METER in song.tracks[0].events
+
+
+def test_octave_moves_the_roots_and_goes_with_out(tmp_path, capsys):
+    f, out = line(tmp_path / "b.mid", (0, BAR, 45)), tmp_path / "roots.mid"
+    assert run(capsys, "roots", f, "-o", out, "--octave", "1")[0] == 0
+    assert [n.pitch for n in read(out.read_bytes()).tracks[1].notes] == [33]
+    rc, _text, err = run(capsys, "roots", f, "-o", tmp_path / "high.mid", "--octave", "9")
+    assert rc == 1 and "octave 9 puts A at 129" in err and not (tmp_path / "high.mid").exists()
+    rc, _text, err = run(capsys, "roots", f, "--octave", "1")
+    assert rc == 1 and "--octave and --force go with -o" in err
+
+
+def test_json_with_out_prints_only_json(tmp_path, capsys):
+    f = line(tmp_path / "b.mid", (0, BAR, 45))
+    rc, text, _err = run(capsys, "roots", f, "--json", "-o", tmp_path / "roots.mid")
+    assert rc == 0 and json.loads(text)[0]["chord"] == "A5"
+
+
+def test_a_bassline_of_zero_length_notes_names_no_root(tmp_path, capsys):
+    f = line(tmp_path / "b.mid", (0, 0, 45), (960, 0, 48))
+    for extra in ([], ["-o", tmp_path / "roots.mid"]):
+        rc, _out, err = run(capsys, "roots", f, *extra)
+        assert rc == 1 and "no note is held long enough to name a root" in err and "division" not in err
+
+
+def test_an_octave_that_puts_a_root_on_a_bass_maps_keyswitch_is_refused(tmp_path, capsys):
+    f, out = line(tmp_path / "b.mid", (0, BAR, 45), (BAR, BAR, 41)), tmp_path / "roots.mid"
+    rc, _text, err = run(capsys, "roots", f, "--map", "ezbass", "-o", out, "--octave", "0")
+    assert rc == 1 and "--octave 0 puts roots on ezbass keyswitches: 17;" in err and not out.exists()
+    assert run(capsys, "roots", f, "--map", "ezbass", "-o", out, "--octave", "1")[0] == 0

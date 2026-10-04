@@ -21,6 +21,7 @@ class PartWording(ValueError):
 
 POLYTOUCH = 0xA0
 GRIDS = (1, 2, 4, 8, 16, 32, 64)
+TRIPLETS = (2, 4, 8, 16, 32, 64)
 Mask = frozenset[int]
 
 
@@ -86,13 +87,26 @@ def delete(part: Part, pitch: int | None = None) -> tuple[Part, int]:
     return replace(part, notes=kept, events=events), len(part.notes) - len(kept)
 
 
-def grid_ticks(denominator: int, ppq: int) -> int:
-    """A note value's ticks at ``ppq``: 4 is a quarter note, 16 a sixteenth."""
-    if denominator not in GRIDS:
-        raise ValueError(f"1/{denominator} is not a grid of 1/1 to 1/64")
-    if ppq * 4 % denominator:
-        raise ValueError(f"1/{denominator} at PPQ {ppq} is not a whole number of ticks")
-    return ppq * 4 // denominator
+def note_value(text: str) -> tuple[int, bool]:
+    """``1/16`` as (16, False), a triplet ``1/8t`` as (8, True)."""
+    t = text.strip()
+    digits = t.removeprefix("1/").removesuffix("t")
+    if not t.startswith("1/") or not digits.isdigit():
+        raise ValueError(f"{t!r} is not a note value like 1/16 or 1/8t")
+    return int(digits), t.endswith("t")
+
+
+def grid_ticks(denominator: int, ppq: int, *, triplet: bool = False) -> int:
+    """A note value's ticks at ``ppq``: 4 is a quarter note, 16 a sixteenth; a triplet is two thirds of it."""
+    name = f"1/{denominator}{'t' * triplet}"
+    if triplet and denominator not in TRIPLETS:
+        raise ValueError(f"{name} is not a triplet of 1/2t to 1/64t")
+    if not triplet and denominator not in GRIDS:
+        raise ValueError(f"{name} is not a grid of 1/1 to 1/64")
+    whole, share = ppq * (8 if triplet else 4), denominator * (3 if triplet else 1)
+    if whole % share:
+        raise ValueError(f"{name} at PPQ {ppq} is not a whole number of ticks")
+    return whole // share
 
 
 def snap(at: int, grid: int, meters: MeterMap) -> int:

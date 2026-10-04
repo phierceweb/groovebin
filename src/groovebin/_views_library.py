@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .library.groove_text import rhythm_text
 from .library.search import MAX_QUERY_BARS
 
 
@@ -52,4 +53,22 @@ def picked(pool, ph) -> list[str]:
     if ph.unmapped:
         kept = ", ".join(f"{pitch} x{n}" for pitch, n in ph.unmapped.items())
         lines.append(f"  no {ph.map} counterpart, {'pitch kept' if ph.unmapped_rule == 'keep' else 'dropped'}: {kept}")
+    return lines
+
+
+def anchored(name: str, bars, meters) -> list[str]:
+    """Each bar's lanes, then the whole file's lanes on one line, as `search --rhythm` reads them."""
+    lines = [f"{name}: {len(bars)} bar(s), a sixteenth a step"]
+    for number, bar in enumerate(bars, 1):
+        if bar.steps:
+            lines.append(f"bar {number}  {rhythm_text([bar])}")
+        else:
+            num, den = meters.meter_at(meters.bar_line(number))
+            lines.append(f"bar {number}  - ({num}/{den} holds no whole number of sixteenths)")
+    if not all(b.steps for b in bars):
+        lines.append("no lanes for search --rhythm: a bar holds no whole number of sixteenths")
+    elif not any(b.kick or b.snare or b.hands for b in bars):
+        lines.append("no lanes for search --rhythm: no kick, snare or hands note")
+    else:
+        lines.append(rhythm_text(bars))
     return lines

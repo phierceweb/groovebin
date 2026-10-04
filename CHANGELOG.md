@@ -3,6 +3,48 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.5.0] — 2026-10-04
+
+### Added
+- `TempoMap.seconds(tick, ppq)` and `TempoMap.tick_at(seconds, ppq)`: ticks to seconds and back over the tempo map.
+- Triplet note values (`1/8t`, `1/16t`, `1/2t` to `1/64t`) for `transform`'s quantize grids, lengths and `--select`
+  lengths, and for `tempo --ramp` steps; `transforms.note_value` and `grid_ticks(…, triplet=True)`.
+- `TempoMap.ramps(ppq)`: tempo ramps read from a run of tempo points (`timing.Ramp`).
+- `TempoMap.with_point`, `TempoMap.with_ramp` and `timing.ramp_points`: tempo points and ramps written into a map.
+- `timing.KeyMap`, `song.key_map(song)`, `song.skipped_keys(song)` and `song.key_signature(event)`: a file's key
+  signatures.
+- `song.with_tempo(song, tempos)` and `song.with_keys(song, keys)`: a song with new tempo or key-signature events in
+  track 1.
+- `harmony.Scale`, `parse_key`, `from_signature` and `signature_name`: twelve scale kinds, steps along a scale, and keys
+  to key signatures and back.
+- `notes` prints each note's time in minutes and seconds, the starting key signature, and how many key signatures
+  and tempo events it skipped; `song.skipped_tempos(song)`.
+- `groovebin tempo`: a file's tempo points and ramps with their bars and times; `--set` and `--ramp` write tempo
+  changes into a copy.
+- `groovebin key`: a file's key signatures and the scale its notes hold; `--set` writes key signatures into a copy.
+- `transforms.scale_quantize`, `transforms.diatonic` and `transforms.change_key`: notes moved within a key.
+- `transform` presets `scale-quantize[=KEY]`, `diatonic=N` and `change-key=KEY`, and `--key` for the key the notes
+  are in (default: the file's key signatures, else an estimate). `--map` with a bass map keeps keyswitches at their
+  pitch in every pitch step and refuses a step that would move a played note onto one.
+- `groovebin anchors`: a drum file's kick, snare and hands lanes, bar by bar, and the file as `search --rhythm`
+  lanes; `groove_text.lane` and `groove.landing_bar`.
+- `roots -o FILE [--octave N]`: the chart's roots written as a MIDI file; `harmony.root_notes`.
+- The index records each mapped pattern's accent profile and `accent`; `search --accent` filters on it, `show` prints
+  it (`library.accent`).
+
+### Changed
+- `harmony` is a package (`chords`, `roots`, `scales`); every name it had imports from `groovebin.harmony` as before.
+- Index schema 5: an index built by an earlier version is refused until it is built again.
+- `TempoMap` keeps one point per tick, the later of two: the one in force.
+- Requires pf-core `~=0.25.0`.
+
+### Fixed
+- `roots` on a bassline whose notes all have length 0 says no note is held, instead of "division by zero".
+- The relative minor in a `scale` line, and `harmony.scale_name`, is spelled as its key signature: `E major / C# minor`,
+  not `Db minor`.
+- `random-velocity` with a negative value, and a `random` operation's negative spread through the library, are refused
+  as `--op random:` is.
+
 ## [0.4.1] — 2026-09-30
 
 ### Changed

@@ -1,15 +1,9 @@
-"""Pitch classes, chords and chord charts, and the chords a bassline implies. A pitch class is 0-11 from C."""
+"""Pitch classes, note names, chords and chord charts. A pitch class is 0-11 from C."""
 
 from __future__ import annotations
 
 import re
-import statistics
-from collections import Counter
-from collections.abc import Iterable
 from dataclasses import dataclass
-
-from .events import Note
-from .timing import MeterMap
 
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 CHORD_NAMES = ("C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
@@ -23,11 +17,6 @@ SPELLINGS = {"": "maj", "maj": "maj", "m": "min", "min": "min", "-": "min", "dim
              "+": "aug", "sus2": "sus2", "sus4": "sus4", "sus": "sus4", "5": "5", "6": "6", "m6": "min6",
              "min6": "min6", "7": "7", "maj7": "maj7", "M7": "maj7", "m7": "min7", "min7": "min7", "-7": "min7",
              "m7b5": "m7b5", "ø": "m7b5", "dim7": "dim7", "°7": "dim7"}
-MAJOR_PROFILE = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
-MINOR_PROFILE = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
-SPLIT_SHARE = 0.8
-START_WEIGHT = 3
-THIRD_SHARE = 0.05
 _NOTE = r"[A-Ga-g][#b]?"
 _SYMBOL = re.compile(rf"^({_NOTE})([^/]*?)(?:/({_NOTE}))?$")
 
@@ -54,24 +43,6 @@ def note_number(text: str) -> int:
     if not 0 <= number <= 127:
         raise ValueError(f"{text} is note {number}, not 0-127")
     return number
-
-
-def scale_of(notes: Iterable[Note]) -> int | None:
-    """The scale a line holds, by the tonic of its major key: Krumhansl and Kessler's key profiles against each
-    pitch class's held length, the best of the 24 keys, a minor key given by its relative major. None for a line of
-    fewer than two pitch classes, or of all twelve held as long."""
-    held = [0.0] * 12
-    for n in notes:
-        held[n.pitch % 12] += n.length
-    if sum(v > 0 for v in held) < 2 or min(held) == max(held):
-        return None
-    fits = [(statistics.correlation(held, [profile[(pc - tonic) % 12] for pc in range(12)]), (tonic + shift) % 12)
-            for tonic in range(12) for profile, shift in ((MAJOR_PROFILE, 0), (MINOR_PROFILE, 3))]
-    return max(fits)[1]
-
-
-def scale_name(major: int) -> str:
-    return f"{CHORD_NAMES[major]} major / {CHORD_NAMES[(major + 9) % 12]} minor"
 
 
 def pitch_name(pitch: int) -> str:
@@ -161,92 +132,3 @@ def revoice(pitch: int, source: Chord, target: Chord) -> int:
         pc, move = (target.root + interval) % 12 if degree is None else degree, target.root - source.root
     aim = pitch + (move + 6) % 12 - 6
     return min((aim + d for d in range(-6, 6) if (aim + d) % 12 == pc), key=lambda p: (abs(p - aim), p))
-
-
-@dataclass(frozen=True, slots=True)
-class Span:
-    start: int
-    end: int
-    chord: Chord
-
-
-def _held(notes: list[Note], lo: int, hi: int, ppq: int, start_weight: int = 1) -> Counter[int]:
-    """Each pitch class's held length from ``lo`` to ``hi``; a note starting within an eighth of a beat of ``lo``
-    counts ``start_weight`` times."""
-    held: Counter[int] = Counter()
-    for n in notes:
-        if n.tick < hi and n.end > lo:
-            weight = start_weight if 8 * abs(n.tick - lo) <= ppq else 1
-            held[n.pitch % 12] += (min(n.end, hi) - max(n.tick, lo)) * weight
-    return held
-
-
-def _root(notes: list[Note], lo: int, hi: int, ppq: int) -> tuple[int | None, float]:
-    held = _held(notes, lo, hi, ppq, START_WEIGHT)
-    if not held:
-        return None, 0.0
-    pitch, weight = held.most_common(1)[0]
-    return pitch, weight / sum(held.values())
-
-
-def _quality(notes: list[Note], span: tuple[int, int], root: int, ppq: int) -> Chord:
-    held = _held(notes, *span, ppq)
-    total = sum(held.values())
-    minor, major = held[(root + 3) % 12] / total, held[(root + 4) % 12] / total
-    if max(minor, major) >= THIRD_SHARE and minor != major:
-        return Chord(root, "min" if minor > major else "maj")
-    return Chord(root, "5")
-
-
-def roots(notes: Iterable[Note], meters: MeterMap, bars: int) -> list[Span]:
-    """The chords a bassline implies over its first ``bars`` bars. A window's root is the pitch class held longest
-    in it, a note starting on the window counting three times; a bar splits into halves only when each half's
-    root holds 80% of it and they differ. A silent bar keeps the chord before it (the first bars take the first
-    chord), equal neighbours merge, and a span is major or minor when the bass holds that third for 5% of it,
-    else a power chord (``5``)."""
-    notes, ppq, windows = list(notes), meters.ppq, []
-    for bar in range(1, bars + 1):
-        lo = meters.bar_line(bar)
-        hi = lo + meters.bar_ticks(lo)
-        mid = (lo + hi) // 2
-        if (hi - lo) % 2 == 0:
-            (first, s1), (second, s2) = _root(notes, lo, mid, ppq), _root(notes, mid, hi, ppq)
-            if None not in (first, second) and first != second and min(s1, s2) >= SPLIT_SHARE:
-                windows += [(lo, mid, first), (mid, hi, second)]
-                continue
-        windows.append((lo, hi, _root(notes, lo, hi, ppq)[0]))
-    current = next((root for _lo, _hi, root in windows if root is not None), None)
-    if current is None:
-        return []
-    merged: list[list[int]] = []
-    for lo, hi, root in windows:
-        current = current if root is None else root
-        if merged and merged[-1][2] == current:
-            merged[-1][1] = hi
-        else:
-            merged.append([lo, hi, current])
-    return [Span(lo, hi, _quality(notes, (lo, hi), root, ppq)) for lo, hi, root in merged]
-
-
-def chart_text(spans: list[Span], meters: MeterMap, bars: int) -> str:
-    """``spans`` as a chart a bar at a time, two chords where a bar splits: ``| A5 | F5 G5 |``."""
-    cells = []
-    for bar in range(1, bars + 1):
-        lo = meters.bar_line(bar)
-        points = (lo, lo + meters.bar_ticks(lo) // 2)
-        found = [next((s.chord for s in spans if s.start <= t < s.end), None) for t in points]
-        cells.append(" ".join(str(c) for c in dict.fromkeys(found) if c is not None) or "N.C.")
-    return "| " + " | ".join(cells) + " |"
-
-
-def chart_spans(bars_of_chords: list[tuple[Chord, ...]], meters: MeterMap, bars: int) -> list[Span]:
-    """A chart laid over ``bars`` bars from bar 1, looping when it is shorter; a bar's chords share it evenly, the
-    last taking what an uneven split leaves."""
-    spans = []
-    for bar in range(1, bars + 1):
-        chords = bars_of_chords[(bar - 1) % len(bars_of_chords)]
-        lo = meters.bar_line(bar)
-        size = meters.bar_ticks(lo)
-        edges = [lo + size * k // len(chords) for k in range(len(chords))] + [lo + size]
-        spans += [Span(a, b, c) for a, b, c in zip(edges[:-1], edges[1:], chords, strict=True)]
-    return spans

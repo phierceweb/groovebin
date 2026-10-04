@@ -1,9 +1,10 @@
 import pytest
 
 from groovebin.events import Event, Note
+from groovebin.harmony import Scale
 from groovebin.song import Part
 from groovebin.timing import MeterMap
-from groovebin.transforms import BY_NAME, PRESETS, WHOLE_PART, Operation, operations, parse_value, run
+from groovebin.transforms import BY_NAME, PRESETS, WHOLE_PART, Operation, PartWording, operations, parse_value, run
 
 
 def note(at, pitch=60, velocity=80, length=240):
@@ -16,8 +17,9 @@ ALL = frozenset(range(8))
 
 
 def test_every_preset_has_a_name_a_kind_and_a_line():
-    assert len({p.name for p in PRESETS}) == len(PRESETS) == 16
-    assert all(p.takes in ("none", "int", "int?", "float", "ticks", "lo..hi", "percent", "swing", "humanize") and p.about for p in PRESETS)
+    assert len({p.name for p in PRESETS}) == len(PRESETS) == 19
+    assert all(p.takes in ("none", "int", "int?", "float", "ticks", "lo..hi", "percent", "swing", "humanize", "key?",
+                                  "steps", "key") and p.about for p in PRESETS)
     assert all(name in BY_NAME for name in WHOLE_PART)
 
 
@@ -146,3 +148,46 @@ def test_a_velocity_band_outside_1_to_127_is_refused(name):
 def test_a_preset_line_says_track_and_never_repeats_its_own_default():
     assert not any("whole part" in p.about for p in PRESETS)
     assert "pos=10t" not in BY_NAME["humanize"].about
+
+
+def test_swing_refuses_a_triplet_grid_whose_odd_lines_fall_on_beats():
+    with pytest.raises(ValueError, match="swing takes a straight grid"):
+        parse_value(BY_NAME["swing"], "60:1/8t", ppq=960)
+    with pytest.raises(ValueError, match="swing takes a straight grid"):
+        run(Part(960, [note(320), note(960)]), None, "swing", (0.6, 8, True), meters=FOUR_FOUR)
+
+
+def test_the_theory_presets_read_a_key_or_a_number_of_steps():
+    assert parse_value(BY_NAME["scale-quantize"], None, ppq=960) is None
+    assert parse_value(BY_NAME["scale-quantize"], "A minor", ppq=960) == Scale(9, "minor")
+    assert parse_value(BY_NAME["diatonic"], "+2", ppq=960) == 2
+    assert parse_value(BY_NAME["change-key"], "Eb", ppq=960) == Scale(3)
+    for name in ("change-key", "diatonic"):
+        with pytest.raises(ValueError, match=f"{name} needs a value"):
+            parse_value(BY_NAME[name], None, ppq=960)
+    assert "change-key" in WHOLE_PART
+
+
+def test_run_reads_the_notes_key_and_change_key_its_target():
+    p = Part(960, [note(0, 61), note(240, 64)])
+    assert [n.pitch for n in run(p, None, "scale-quantize", None, keys=Scale(0)).notes] == [60, 64]
+    assert [n.pitch for n in run(p, None, "scale-quantize", Scale(0, "minor")).notes] == [60, 63]
+    assert [n.pitch for n in run(p, None, "diatonic", 1, keys=Scale(0)).notes] == [63, 65]
+    assert [n.pitch for n in run(p, None, "change-key", Scale(2), keys=Scale(0)).notes] == [63, 66]
+    assert [n.pitch for n in run(p, None, "diatonic", 1, keys=Scale(0), hold=lambda pitch: pitch == 61).notes] == [61, 65]
+    with pytest.raises(ValueError, match="scale-quantize needs the key the notes are in"):
+        run(p, None, "scale-quantize")
+    with pytest.raises(PartWording, match="change-key takes the whole part"):
+        run(p, frozenset({0}), "change-key", Scale(2), keys=Scale(0))
+
+
+def test_theory_presets_read_key_points_on_the_songs_timeline_from_start():
+    p = Part(960, [note(0, 66), note(240, 70)])
+    keys = [(0, Scale(0)), (7680, Scale(6))]
+    assert [n.pitch for n in run(p, None, "scale-quantize", keys=keys, start=7680).notes] == [66, 70]
+
+
+def test_a_random_spread_below_0_is_refused_however_it_arrives():
+    p = Part(960, [note(0, 60)])
+    with pytest.raises(ValueError, match="random takes a spread of 0 or more"):
+        run(p, None, "random-velocity", -5)

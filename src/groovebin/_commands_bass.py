@@ -11,9 +11,9 @@ from pathlib import Path
 from pf_core.exceptions import InvalidInputError
 from pf_core.utils.io import atomic_write_bytes
 
-from . import _views_bass
+from . import _views, _views_bass
 from ._files import read_song, refuse_overwrite, track_indices
-from .harmony import chart, chart_spans, chart_text, note_number, roots, scale_name, scale_of
+from .harmony import chart, chart_spans, chart_text, note_number, root_notes, roots, scale_name, scale_of
 from .library.bass_picker import lay, load_bass_bars, pick_bass
 from .library.bass_rules import APPROACH_RATE, bass_line
 from .library.bassline import analyze
@@ -21,12 +21,28 @@ from .library.groove import VOICES, rhythm, voices
 from .maps import note_map
 from .events import Event
 from .midi import write
-from .song import Part, Song, meter_map, rescale
+from .song import KEY_SIGNATURE, Part, Song, meter_map, rescale
 
 CONDUCTOR = (0x51, 0x58)
+ROOT_TITLE = b"Roots"
+
+
+def _write_roots(path: str, song: Song, spans, octave: int | None, bass, map_name: str | None) -> None:
+    notes = root_notes(spans, 2 if octave is None else octave)
+    if bass is not None and (held := list(dict.fromkeys(n.pitch for n in notes if bass.is_keyswitch(n.pitch)))):
+        raise InvalidInputError(f"--octave {octave} puts roots on {map_name} keyswitches: {_views.joined(held)}; "
+                                "give a higher octave")
+    conductor = tuple(e for t in song.tracks for e in t.events if e.meta_type in (*CONDUCTOR, KEY_SIGNATURE))
+    title = Event(0, bytes([0xFF, 0x03, len(ROOT_TITLE)]) + ROOT_TITLE)
+    part = Part(song.ppq, notes, (title,), end=spans[-1].end)
+    atomic_write_bytes(path, write(Song(song.ppq, 1, (Part(song.ppq, (), conductor), part))))
 
 
 def cmd_roots(args: argparse.Namespace) -> int:
+    if args.out:
+        refuse_overwrite(args.out, args.input, force=args.force)
+    elif args.octave is not None or args.force:
+        raise InvalidInputError("--octave and --force go with -o: give -o OUT.mid")
     song, name = read_song(args.input), Path(args.input).name
     bass = note_map(args.map) if args.map else None
     if bass is not None and bass.kind == "drums":
@@ -38,6 +54,10 @@ def cmd_roots(args: argparse.Namespace) -> int:
     meters = meter_map(song)
     bars = meters.bar_of(max(n.tick for n in played))
     spans = roots(played, meters, bars)
+    if not spans:
+        raise InvalidInputError(f"{name}: no note is held long enough to name a root")
+    if args.out:
+        _write_roots(args.out, song, spans, args.octave, bass, args.map)
     if args.json:
         print(json.dumps([{"start": s.start, "end": s.end, "bar": meters.bar_of(s.start), "chord": str(s.chord)}
                           for s in spans], indent=1))
@@ -46,6 +66,8 @@ def cmd_roots(args: argparse.Namespace) -> int:
     print(chart_text(spans, meters, bars))
     if (major := scale_of(played)) is not None:
         print(f"scale  {scale_name(major)}")
+    if args.out:
+        print(f"out : {args.out}")
     return 0
 
 

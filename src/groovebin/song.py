@@ -12,10 +12,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from .events import RANK, Event, Note, order_key
-from .timing import MeterMap, TempoMap
+from .timing import KeyMap, MeterMap, TempoMap
 
 END_OF_TRACK = b"\xff\x2f\x00"
-TEMPO, TIME_SIGNATURE, TRACK_NAME = 0x51, 0x58, 0x03
+TEMPO, TIME_SIGNATURE, TRACK_NAME, KEY_SIGNATURE = 0x51, 0x58, 0x03, 0x59
 MAX_DENOMINATOR_POWER = 6
 
 
@@ -124,10 +124,18 @@ def _metas(song: Song, meta_type: int) -> list[Event]:
                   key=lambda e: e.tick)
 
 
+def _usable_tempo(e: Event) -> bool:
+    return len(e.payload) == 3 and any(e.payload)
+
+
 def tempo_map(song: Song) -> TempoMap:
-    """Tempo events from every track; a zero tempo or a malformed one is skipped."""
-    points = [(e.tick, int.from_bytes(e.payload)) for e in _metas(song, TEMPO) if len(e.payload) == 3]
-    return TempoMap(tuple((t, usec) for t, usec in points if usec))
+    """Tempo events from every track; a zero tempo or one not three bytes long is skipped — `skipped_tempos` counts
+    those."""
+    return TempoMap(tuple((e.tick, int.from_bytes(e.payload)) for e in _metas(song, TEMPO) if _usable_tempo(e)))
+
+
+def skipped_tempos(song: Song) -> int:
+    return sum(not _usable_tempo(e) for e in _metas(song, TEMPO))
 
 
 def _usable_meter(e: Event, ppq: int) -> bool:
@@ -148,6 +156,44 @@ def skipped_meters(song: Song) -> int:
     """How many of the song's time signatures ``meter_map`` leaves out. A caller that shows bar
     positions says so: the bars it prints are counted in the meters that remain."""
     return sum(not _usable_meter(e, song.ppq) for e in _metas(song, TIME_SIGNATURE))
+
+
+def key_signature(e: Event) -> tuple[int, bool] | None:
+    """(sharps, minor) of a key-signature event; None for any other event, or one that is not two bytes, has more
+    than seven sharps or flats, or a mode other than 0 (major) and 1 (minor)."""
+    if e.meta_type != KEY_SIGNATURE or len(e.payload) != 2 or e.payload[1] not in (0, 1):
+        return None
+    sharps = e.payload[0] - 256 if e.payload[0] > 127 else e.payload[0]
+    return (sharps, bool(e.payload[1])) if -7 <= sharps <= 7 else None
+
+
+def key_map(song: Song) -> KeyMap:
+    """Key signatures from every track; one `key_signature` cannot read is skipped — `skipped_keys` counts those."""
+    return KeyMap(tuple((e.tick, *found) for e in _metas(song, KEY_SIGNATURE) if (found := key_signature(e))))
+
+
+def skipped_keys(song: Song) -> int:
+    return sum(key_signature(e) is None for e in _metas(song, KEY_SIGNATURE))
+
+
+def _with_metas(song: Song, meta_type: int, events: list[Event]) -> Song:
+    """``song`` with every ``meta_type`` event gone from every track and ``events`` in track 1."""
+    if not song.tracks:
+        raise ValueError("a song with no tracks has nowhere to write")
+    tracks = [replace(t, events=tuple(e for e in t.events if e.meta_type != meta_type)) for t in song.tracks]
+    tracks[0] = replace(tracks[0], events=tracks[0].events + tuple(events))
+    return replace(song, tracks=tuple(tracks))
+
+
+def with_tempo(song: Song, tempos: TempoMap) -> Song:
+    """``song`` with ``tempos`` as its only tempo events, in track 1 — the conductor in format 1."""
+    return _with_metas(song, TEMPO, [Event(t, b"\xff\x51\x03" + usec.to_bytes(3)) for t, usec in tempos.points])
+
+
+def with_keys(song: Song, keys: KeyMap) -> Song:
+    """``song`` with ``keys`` as its only key signatures, in track 1."""
+    return _with_metas(song, KEY_SIGNATURE, [Event(t, bytes([0xFF, 0x59, 2, sharps & 0xFF, int(minor)]))
+                                              for t, sharps, minor in keys.points])
 
 
 def rescale(part: Part, ppq: int) -> Part:

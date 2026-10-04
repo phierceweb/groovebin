@@ -51,20 +51,31 @@ def voices(map_name: str) -> Mapping[int, int]:
     return MappingProxyType(table)
 
 
-def _steps(sig: tuple[int, int]) -> int:
+def bar_steps(sig: tuple[int, int]) -> int:
     num, den = sig
     return 16 * num // den if 16 * num % den == 0 else 0
 
 
-def _compound(sig: tuple[int, int]) -> bool:
+def compound(sig: tuple[int, int]) -> bool:
     return sig[1] == 8 and sig[0] % 3 == 0 and sig[0] > 3
+
+
+def _step(tick: int, line: int, ppq: int) -> int:
+    return (8 * (tick - line) + ppq) // (2 * ppq)
+
+
+def landing_bar(tick: int, meters: MeterMap) -> int:
+    """The bar a note at ``tick`` counts in on the sixteenth grid: one rounding onto a bar line starts the next bar."""
+    bar = meters.bar_of(tick)
+    steps = bar_steps(meters.meter_at(meters.bar_line(bar)))
+    return bar + 1 if steps and _step(tick, meters.bar_line(bar), meters.ppq) >= steps else bar
 
 
 def rhythm(notes: Iterable[Note], meters: MeterMap, bars: int, map_name: str) -> tuple[Bar, ...]:
     """The first ``bars`` bars as a sixteenth grid per voice. A note rounding onto a bar line starts the next
     bar; one past the last bar is left out, and a bar whose meter holds no whole number of sixteenths is empty."""
     table, ppq = voices(map_name), meters.ppq
-    steps = [_steps(meters.meter_at(meters.bar_line(b))) for b in range(1, bars + 1)]
+    steps = [bar_steps(meters.meter_at(meters.bar_line(b))) for b in range(1, bars + 1)]
     grids = [[0, 0, 0] for _ in range(bars)]
     for n in notes:
         voice = table.get(n.pitch)
@@ -73,7 +84,7 @@ def rhythm(notes: Iterable[Note], meters: MeterMap, bars: int, map_name: str) ->
         bar = meters.bar_of(n.tick)
         if bar > bars or not steps[bar - 1]:
             continue
-        step = (8 * (n.tick - meters.bar_line(bar)) + ppq) // (2 * ppq)
+        step = _step(n.tick, meters.bar_line(bar), ppq)
         if step >= steps[bar - 1]:
             bar, step = bar + 1, 0
         if bar <= bars and steps[bar - 1]:
@@ -99,8 +110,8 @@ def from_json(text: str | None) -> tuple[Bar, ...]:
 
 def _levels(sig: tuple[int, int]) -> list[int]:
     """Each sixteenth's metrical level in a bar of ``sig``: 0 the downbeat, higher weaker."""
-    steps = _steps(sig)
-    beat = 6 if _compound(sig) else max(16 // sig[1], 1)
+    steps = bar_steps(sig)
+    beat = 6 if compound(sig) else max(16 // sig[1], 1)
     periods = [steps]
     if steps // beat > 2 and steps // beat % 2 == 0:
         periods.append(steps // 2)
@@ -176,7 +187,7 @@ def swing(notes: Iterable[Note], meters: MeterMap, map_name: str, *, sixteenths:
 
 def beat_ticks(sig: tuple[int, int], ppq: int) -> float:
     """A beat's length: a dotted quarter in 6/8, 9/8 and 12/8, else the meter's denominator."""
-    return ppq * 4 / sig[1] * (3 if _compound(sig) else 1)
+    return ppq * 4 / sig[1] * (3 if compound(sig) else 1)
 
 
 def lag(notes: Iterable[Note], meters: MeterMap, map_name: str) -> float | None:

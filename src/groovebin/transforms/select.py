@@ -109,6 +109,8 @@ def _checked(o: Operation) -> None:
             raise ValueError(f"crescendo takes a LO..HI pair, not {o.value!r}")
     elif not _is_number(o.value):
         raise ValueError(f"{o.op} {o.field} takes a number, not {o.value!r}")
+    if o.op == "random" and o.value < 0:
+        raise ValueError("random takes a spread of 0 or more")
     if o.op in ("crescendo", "reverse") and o.field == "channel":
         raise ValueError(f"{o.op} {'ramps' if o.op == 'crescendo' else 'mirrors'} "
                          "position, pitch, velocity or length, not channel")

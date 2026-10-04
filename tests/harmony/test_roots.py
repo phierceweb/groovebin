@@ -1,8 +1,10 @@
 """The chords a bassline implies: held length decides the root, the note on a change counts three times, a bar
 splits in half only when each half has a root of its own, and a third the bass holds names the quality."""
 
+import pytest
+
 from groovebin.events import Note
-from groovebin.harmony import Chord, Span, chart, chart_spans, chart_text, roots
+from groovebin.harmony import Chord, Span, chart, chart_spans, chart_text, root_notes, roots
 from groovebin.timing import MeterMap
 
 PPQ, BAR = 960, 3840
@@ -63,3 +65,12 @@ def test_a_chart_laid_over_bars_loops_and_shares_each_bar():
                      Span(2 * BAR, 3 * BAR, Chord(9, "min"))]
     waltz = MeterMap(PPQ, ((0, 3, 4),))
     assert [s.end - s.start for s in chart_spans(chart("| C F G |"), waltz, 1)] == [960, 960, 960]
+
+
+def test_root_notes_put_each_spans_lowest_note_in_the_octave():
+    spans = [Span(0, 960, Chord(9, "min")), Span(960, 1920, Chord(0, "maj", 7))]
+    assert [(n.tick, n.length, n.pitch, n.velocity, n.channel) for n in root_notes(spans)] == \
+        [(0, 960, 45, 100, 1), (960, 960, 43, 100, 1)]
+    assert root_notes(spans, octave=-1)[0].pitch == 9
+    with pytest.raises(ValueError, match="octave 9 puts A at 129, outside 0-127"):
+        root_notes(spans, octave=9)

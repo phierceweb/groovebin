@@ -16,8 +16,8 @@ def test_notes_lists_each_track_with_bars_and_strokes(tmp_path, capsys):
     assert lines[0] == "in.mid: format 1, PPQ 480, 2 track(s), 120 bpm, 3/4"
     assert lines[1] == "track 1: 0 note(s), 2 other event(s)"
     assert lines[2] == "track 2 'Kit': 2 note(s), 1 other event(s)"
-    assert lines[3] == "  bar    1.000  ch 10  note  36  vel 100  len    120  Bass Drum 1"
-    assert lines[4] == "  bar    2.250  ch 10  note  42  vel  79  len     60  Closed Hi Hat"
+    assert lines[3] == "  bar    1.000   0:00.000  ch 10  note  36  vel 100  len    120  Bass Drum 1"
+    assert lines[4] == "  bar    2.250   0:01.875  ch 10  note  42  vel  79  len     60  Closed Hi Hat"
 
 
 def test_notes_without_a_map_lists_no_strokes_and_track_picks_one(tmp_path, capsys):
@@ -25,7 +25,7 @@ def test_notes_without_a_map_lists_no_strokes_and_track_picks_one(tmp_path, caps
     path.write_bytes(write(Song(96, 1, (Part(96, (Note(0, 10, 1, 60, 50),)), Part(96, (Note(0, 10, 1, 127, 50),))))))
     assert main(["notes", str(path), "--track", "2"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[1:] == ["track 2: 1 note(s), 0 other event(s)", "  bar    1.000  ch  1  note 127  vel  50  len     10"]
+    assert lines[1:] == ["track 2: 1 note(s), 0 other event(s)", "  bar    1.000   0:00.000  ch  1  note 127  vel  50  len     10"]
 
 
 def test_a_meter_the_file_cannot_hold_is_skipped_and_the_notes_still_list(tmp_path, capsys):
@@ -73,3 +73,13 @@ def test_notes_says_nothing_extra_about_an_unambiguous_file(tmp_path, capsys):
     assert main(["notes", str(path)]) == 0
     out = capsys.readouterr().out
     assert "same-pitch" not in out and "note-off(s)" not in out and "skipped" not in out
+
+
+def test_the_header_names_the_key_signature_the_file_starts_in_and_says_what_was_skipped(tmp_path, capsys):
+    keys = (Event(0, bytes([0xFF, 0x59, 2, 0, 1])), Event(0, b"\xff\x59\x02\x09\x00"))
+    path = tmp_path / "in.mid"
+    path.write_bytes(write(Song(480, 0, (Part(480, (Note(0, 120, 1, 57, 90),), keys),))))
+    assert main(["notes", str(path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "in.mid: format 0, PPQ 480, 1 track(s), 120 bpm, 4/4, A minor"
+    assert "1 key signature(s) were skipped" in lines[-1]

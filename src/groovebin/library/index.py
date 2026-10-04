@@ -22,6 +22,7 @@ from ..maps import note_map
 from ..midi import read
 from ..song import merged, meter_map, rescale, skipped_meters, tempo_map
 from ..timing import MeterMap
+from .accent import columns as accent_columns
 from .blobs import pack_events, pack_notes
 from .groove import columns
 from .names import describe, role_of
@@ -38,7 +39,7 @@ def default_db(cache_home: str | None = None) -> Path:
     return Path(cache_home or DEFAULT_CACHE).expanduser() / "groovebin" / "library.sqlite"
 
 PPQ = 960
-SCHEMA = 4
+SCHEMA = 5
 ID_LENGTH = 10
 MAX_BARS = 4096
 CSV_TYPE_ROW = "string"
@@ -54,13 +55,13 @@ CSV_COLUMNS = {
     "MidiMD5": ("midi_md5", str),
 }
 LABELS = ("role", "map")
-GROOVE = ("rhythm", "density", "syncopation", "subdivision", "swing8", "swing16", "lag")
+GROOVE = ("rhythm", "density", "syncopation", "subdivision", "swing8", "swing16", "lag", "accent", "accents")
 PARSED = ("ppq", "bars", "meters", "histogram", "notes", "events", "error", *GROOVE)
 COLUMNS = ("key", "id", "source") + tuple(c for c, _ in CSV_COLUMNS.values()) + LABELS + CHORD_COLUMNS + PARSED
 REQUIRED_CSV = ("FileName", "MidiData")
 INTEGERS = {"ppq", "bars", *(c for c, kind in CSV_COLUMNS.values() if kind in (int, bool))}
 REALS = {c for c, kind in CSV_COLUMNS.values() if kind is float} | {"density", "syncopation", "swing8", "swing16", "lag",
-                                                                     "changes"}
+                                                                     "changes", "accent"}
 
 
 def _sql_type(column: str) -> str:
@@ -114,7 +115,8 @@ def _parse(data: bytes, meter_hint: tuple[int, int] | None, map_name: str | None
     own = {"meter": None if unknown else f"{num}/{den}",
            "tempo": None if tempos.defaulted else round(tempos.bpm(tempos.points[0][0]), 6)}
     drums = map_name is not None and note_map(map_name).kind == "drums"
-    feel = columns(part.notes, meters, bars, map_name) if drums else dict.fromkeys(GROOVE)
+    feel = (columns(part.notes, meters, bars, map_name) | accent_columns(part.notes, meters, bars, map_name)
+            if drums else dict.fromkeys(GROOVE))
     return {"ppq": song.ppq, "bars": bars, "meters": json.dumps(scaled), "histogram": json.dumps(histogram),
             "notes": packed, "events": events, "error": None} | feel, own
 
