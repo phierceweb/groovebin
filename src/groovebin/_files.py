@@ -8,7 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
-from pf_core.exceptions import InvalidInputError
+from pw_foundation.exceptions import InvalidInputError
 
 from .midi import read
 from .song import Song

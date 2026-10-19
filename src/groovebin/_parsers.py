@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from pf_core.utils.env import resolve_str
+from pw_foundation.utils.env import resolve_str
 
 from . import __version__
 from .library.groove import SUBDIVISIONS

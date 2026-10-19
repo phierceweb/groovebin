@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.6.0] — 2026-10-19
+
+### Changed
+- Depends on `pw-foundation~=1.0` instead of `pf-core`; imports are `pw_foundation.*`. The gate config is
+  `.pw-guards.toml`.
+
 ## [0.5.0] — 2026-10-04
 
 ### Added

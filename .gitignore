@@ -45,5 +45,6 @@ logs/
 .cbmignore
 CLAUDE.md
 
-# pf-core docs symlink (bin/run setup recreates it)
+# framework docs symlinks: bin/run setup makes docs/pw-foundation; an older setup left docs/pf-core
+docs/pw-foundation
 docs/pf-core

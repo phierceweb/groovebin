@@ -19,9 +19,9 @@ file itself.
 ## Setup
 
 ```bash
-bin/run setup          # venv (needs python3.12 on PATH), editable install, pf-core docs link
+bin/run setup          # venv (needs python3.12 on PATH), editable install, pw-foundation docs link
 bin/run pytest
-bin/run lint           # ruff + pf-core's structural gate
+bin/run lint           # ruff + pw-foundation's structural gate
 ```
 
 ## Conventions
@@ -30,9 +30,9 @@ bin/run lint           # ruff + pf-core's structural gate
   notes measured from files the instrument's software wrote — named in the map's `source`. A
   note no source names stays out of the map.
 - **Library code is quiet.** The library imports the standard library only; logging,
-  printing, environment variables and pf-core belong to the CLI modules.
+  printing, environment variables and pw-foundation belong to the CLI modules.
   `tests/test_package_layering.py` enforces this and the module layers.
-- **One concern per file.** `bin/run lint` runs pf-core's file-size gate; if a file is over,
+- **One concern per file.** `bin/run lint` runs pw-foundation's file-size gate; if a file is over,
   split it rather than grandfathering it.
 - **Edit commands never overwrite their input.** They write a new file.
 - **Docs travel with code.** A new command or flag is documented in `docs/usage.md`;

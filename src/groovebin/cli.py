@@ -10,9 +10,9 @@ from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
-from pf_core.exceptions import FlowException, InvalidInputError
-from pf_core.log import get_logger, setup_logging
-from pf_core.utils.io import atomic_write_bytes
+from pw_foundation.exceptions import FlowException, InvalidInputError
+from pw_foundation.log import get_logger, setup_logging
+from pw_foundation.utils.io import atomic_write_bytes
 
 from . import _views
 from ._commands_library import cmd_anchors, cmd_generate, cmd_index, cmd_search, cmd_show
@@ -133,7 +133,7 @@ COMMANDS = {"remap": cmd_remap, "notes": cmd_notes, "index": cmd_index, "search"
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point: pf-core logging and the one exception boundary. Runs log at debug; set
+    """Entry point: pw-foundation logging and the one exception boundary. Runs log at debug; set
     ``LOG_FILE=path`` for a JSON-lines trail."""
     setup_logging(app_logger_name="groovebin")
     log = get_logger("groovebin")

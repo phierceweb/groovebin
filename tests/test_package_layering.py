@@ -1,4 +1,4 @@
-"""The module layers stay ordered and the library stays quiet. pf_core.guards checks layering
+"""The module layers stay ordered and the library stays quiet. pw_foundation.guards checks layering
 only inside an `app/` tree, so this test owns it for src-layout."""
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def violations(src: Path) -> list[str]:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for mod in imported(path, src, node):
                     top = mod.split(".")[0]
-                    if mine != BOUNDARY and (top == "pf_core" or top in QUIET_MODULES):
+                    if mine != BOUNDARY and (top == "pw_foundation" or top in QUIET_MODULES):
                         found.append(f"{line}: {unit} imports {mod} (boundary only)")
                     if mine != BOUNDARY and top == "os" and isinstance(node, ast.ImportFrom) \
                             and ENV_ATTRS & {a.name for a in node.names}:
@@ -123,7 +123,7 @@ def tree(tmp_path: Path, files: dict[str, str]) -> Path:
     ({"maps/translate.py": "from ..library import search\n"}, "maps (layer 1) imports library (layer 2)"),
     ({"maps/translate.py": "from .. import cli\n"}, "maps (layer 1) imports cli (layer 3)"),
     ({"transforms.py": "import groovebin.library.index\n"}, "transforms (layer 1) imports library"),
-    ({"transforms.py": "from pf_core.utils.io import atomic_write_bytes\n"}, "imports pf_core"),
+    ({"transforms.py": "from pw_foundation.utils.io import atomic_write_bytes\n"}, "imports pw_foundation"),
     ({"library/index.py": "import logging\n"}, "imports logging"),
     ({"midi.py": "print('hi')\n"}, "calls print()"),
     ({"midi.py": "import os\nx = os.environ['A']\n"}, "reads the environment"),
@@ -141,7 +141,7 @@ def test_each_violation_is_caught(tmp_path, files, expected):
 
 def test_the_boundary_may_use_the_framework(tmp_path):
     src = tree(tmp_path, {
-        "cli.py": "import os\nfrom pf_core.log import get_logger\nfrom . import midi\nprint(os.environ)\n",
+        "cli.py": "import os\nfrom pw_foundation.log import get_logger\nfrom . import midi\nprint(os.environ)\n",
         "_views_drums.py": "print('lanes')\n",
         "midi.py": "",
     })

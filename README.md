@@ -56,7 +56,7 @@ From a checkout:
 
     bin/run setup
     bin/run pytest
-    bin/run lint        # ruff + the pf-core structural gate (300 soft / 500 hard lines)
+    bin/run lint        # ruff + the pw-foundation structural gate (300 soft / 500 hard lines)
 
 See [CONTRIBUTING.md](https://github.com/phierceweb/groovebin/blob/main/CONTRIBUTING.md).
 
