@@ -188,8 +188,21 @@ def test_a_triplet_grid_is_two_thirds_of_its_note_value():
         grid_ticks(16, 100, triplet=True)
 
 
-def test_note_value_reads_straight_and_triplet_values():
-    assert (note_value("1/16"), note_value(" 1/8t "), note_value("1/64t")) == ((16, False), (8, True), (64, True))
-    for bad in ("16", "1/", "1/t", "1/8tt", "2/8"):
-        with pytest.raises(ValueError, match="is not a note value like 1/16 or 1/8t"):
+def test_a_dotted_note_is_one_and_a_half_times_its_note_value():
+    assert (grid_ticks(8, 960, dotted=True), grid_ticks(16, 960, dotted=True), grid_ticks(1, 960, dotted=True),
+            grid_ticks(64, 96, dotted=True)) == (720, 360, 5760, 9)
+    with pytest.raises(ValueError, match=r"1/3\. is not a dotted note of 1/1\. to 1/64\."):
+        grid_ticks(3, 960, dotted=True)
+    assert grid_ticks(64, 112) == 7
+    with pytest.raises(ValueError, match=r"1/64\. at PPQ 112 is not a whole number of ticks"):
+        grid_ticks(64, 112, dotted=True)
+    with pytest.raises(ValueError, match="a triplet or a dotted note, not both"):
+        grid_ticks(8, 960, triplet=True, dotted=True)
+
+
+def test_note_value_reads_straight_triplet_and_dotted_values():
+    assert (note_value("1/16"), note_value(" 1/8t "), note_value("1/64t"), note_value("1/8.")) == \
+        ((16, False, False), (8, True, False), (64, True, False), (8, False, True))
+    for bad in ("16", "1/", "1/t", "1/.", "1/8tt", "1/8..", "1/8t.", "1/8.t", "2/8", "1/²", "1/١٦"):
+        with pytest.raises(ValueError, match=r"is not a note value like 1/16, 1/8t or 1/8\."):
             note_value(bad)

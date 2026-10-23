@@ -65,9 +65,9 @@ def _transform(sub) -> None:
     tr.add_argument("-o", "--out", help="the .mid file to write")
     tr.add_argument("--track", type=int, action="append", help="transform only this track, from 1 (repeatable)")
     tr.add_argument("--select", metavar="COND[,COND…]",
-                    help="which notes: FIELD=VALUE, FIELD=LO-HI, or FIELD<, <=, >, >=, != VALUE, over position (bars; a "
-                         "whole number is the whole bar), pitch, velocity, length (ticks, 240t or 1/16) and channel; "
-                         "default every note")
+                    help="which notes: FIELD=VALUE, FIELD=LO-HI, or FIELD<, <=, >, >=, != VALUE, over position (bars, "
+                         "where a whole number is the whole bar, or a time: 1:05.5 or 65.5s), pitch, velocity, length "
+                         "(ticks, 240t, 1/16, 1/8t or 1/8.) and channel; default every note")
     tr.add_argument("--op", dest="steps", action=_Step, metavar="OP:FIELD[=VALUE]",
                     help="set, add, mul, min, max, random, flip, quantize, crescendo (LO..HI), exp, reverse (no value) "
                          "on position, pitch, velocity, length or channel; exp is velocity only, and crescendo "

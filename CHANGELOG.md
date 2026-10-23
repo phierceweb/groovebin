@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.7.0] — 2026-10-22
+
+### Added
+- Dotted note values (`1/8.`, one and a half times the note) wherever a note value is taken: `transform`'s
+  quantize grids, lengths, `--select` lengths and length presets, and `tempo --ramp` steps; `grid_ticks(…, dotted=True)`.
+- `transform --select position=` takes a time from the file's start (`1:05.5`, `65.5s`) as well as bars, matched
+  against each note's time to the millisecond; `parse_select(…, times=True)` returns it in milliseconds under `time`,
+  and `transforms.time_ticks` converts it. `transform` reports skipped tempo events when it reads a time.
+- `TempoMap.milliseconds(tick, ppq)` and `TempoMap.first_tick_at(ms, ppq)`: a tick's time to the millisecond, and back.
+
+### Changed
+- `transforms.note_value` returns `(denominator, triplet, dotted)`.
+- `swing` refuses a dotted grid, as it does a triplet one.
+- `notes` and `tempo` round each time half up from the tick's exact time.
+
+### Fixed
+- `transforms.note_value` takes ASCII digits only: `1/²` is refused as not a note value instead of with Python's
+  own `int()` message.
+
 ## [0.6.0] — 2026-10-19
 
 ### Changed

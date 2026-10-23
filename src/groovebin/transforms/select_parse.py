@@ -13,6 +13,7 @@ from .select import ALIASES, FIELDS, OPS, Operation, Range
 
 CONDITION = re.compile(r"^(\w+)(!=|<=|>=|=|<|>)(.+)$")
 NUMBER = re.compile(r"^-?\d+(\.\d+)?$")
+TIME = re.compile(r"^(?:(\d{1,15}):([0-5]\d)(?:\.(\d+))?|(\d{1,15})(?:\.(\d+))?s)$", re.ASCII)
 
 
 def _inside(value: int, text: str) -> int:
@@ -38,15 +39,15 @@ def whole_number(text: str) -> int:
 
 
 def ticks_of(text: str, ppq: int) -> int:
-    """``240``, ``240t`` or a note value ``1/16`` or ``1/16t`` as ticks at ``ppq``."""
+    """``240``, ``240t`` or a note value ``1/16``, ``1/16t`` or ``1/16.`` as ticks at ``ppq``."""
     t = text.strip()
     if t.startswith("1/"):
-        denominator, triplet = note_value(t)
-        return grid_ticks(denominator, ppq, triplet=triplet)
+        denominator, triplet, dotted = note_value(t)
+        return grid_ticks(denominator, ppq, triplet=triplet, dotted=dotted)
     try:
         return int(t.removesuffix("t"))
     except ValueError:
-        raise ValueError(f"{t!r} is not a tick count or a note value like 1/16") from None
+        raise ValueError(f"{t!r} is not a tick count or a note value like 1/16, 1/8t or 1/8.") from None
 
 
 def tick_value(text: str, ppq: int) -> int:
@@ -76,25 +77,74 @@ def _compared(op: str, value: float) -> Range:
     return Range(value, value)
 
 
-def parse_select(text: str, *, ppq: int) -> dict[str, Range]:
+def _milliseconds_of(text: str) -> int | None:
+    """``1:05.5`` or ``65.5s`` as 65500 milliseconds; None for text not written as a time. A time finer than a
+    millisecond is refused: note times are read to the millisecond (`TempoMap.milliseconds`)."""
+    t = text.strip()
+    m = TIME.match(t)
+    if not m:
+        return None
+    minutes, secs, frac, whole, plain = m.groups()
+    frac = ((frac if minutes is not None else plain) or "").rstrip("0")
+    if len(frac) > 3:
+        raise ValueError(f"{t!r} is finer than a millisecond, the most a time is read to")
+    seconds = int(minutes) * 60 + int(secs) if minutes is not None else int(whole)
+    return seconds * 1000 + int(frac.ljust(3, "0"))
+
+
+def _bar(text: str, times: bool) -> float:
+    try:
+        return number(text)
+    except ValueError:
+        kinds = "a bar like 9.5 or a time like 1:05.5 or 65.5s" if times else "a bar like 9.5"
+        raise ValueError(f"{text.strip()!r} is not {kinds}") from None
+
+
+def _times(texts: tuple[str, ...], value: str, allowed: bool) -> list[int]:
+    if not allowed:
+        written = next(t for t in texts if TIME.match(t.strip()))
+        raise ValueError(f"{written.strip()!r} is a time: give the position in bars")
+    found = [_milliseconds_of(t) for t in texts]
+    if None in found:
+        raise ValueError(f"a position range is bars or times at both ends, not {value!r}")
+    return found
+
+
+def parse_select(text: str, *, ppq: int, times: bool = False) -> dict[str, Range]:
     """``pitch=36-47,velocity<40,position=9-12`` -> a Range per field. A position is in bars (the caller
-    converts with `position_ticks`); a length is ticks or a note value."""
+    converts with `position_ticks`); a length is ticks or a note value. A position written as a time, ``1:05.5``
+    or ``65.5s``, comes back under ``time`` in milliseconds when ``times`` is set (the caller converts with
+    `time_ticks`), and is refused otherwise."""
     out: dict[str, Range] = {}
+    named: set[str] = set()
     for item in text.split(","):
         m = CONDITION.match(item.strip())
         if not m:
             raise ValueError(f"bad condition {item.strip()!r}: FIELD=VALUE, FIELD=LO-HI, or FIELD with <, <=, >, >=, != a value")
-        field, op, value = _field(m.group(1)), m.group(2), m.group(3)
-        reading = (lambda v: ticks_of(v, ppq)) if field == "length" else number
-        if op == "=" and "-" in value.strip().lstrip("-"):
-            lo, _, hi = value.strip().partition("-")
-            r = Range(reading(lo), reading(hi))
-            if r.hi < r.lo:
-                raise ValueError(f"a range of {value.strip()!r} runs backwards")
-        else:
-            r = _compared(op, reading(value))
-        if field in out:
+        field, op, value = _field(m.group(1)), m.group(2), m.group(3).strip()
+        if field in named:
             raise ValueError(f"{m.group(1)} is given twice")
+        named.add(field)
+        ranged = op == "=" and "-" in value.lstrip("-")
+        if ranged and value.startswith("-"):
+            raise ValueError(f"a range of {value!r} starts below 0")
+        lo, _, hi = value.partition("-")
+        texts = (lo, hi) if ranged else (value,)
+        if ranged and not hi.strip():
+            raise ValueError(f"a range of {value!r} needs both ends")
+        if field == "tick" and any(TIME.match(t.strip()) for t in texts):
+            field, bounds = "time", _times(texts, value, times)
+        elif field == "tick":
+            bounds = [_bar(t, times) for t in texts]
+        else:
+            reading = (lambda v: ticks_of(v, ppq)) if field == "length" else number
+            bounds = [reading(t) for t in texts]
+        if ranged:
+            r = Range(*bounds)
+            if r.hi < r.lo:
+                raise ValueError(f"a range of {value!r} runs backwards")
+        else:
+            r = _compared(op, bounds[0])
         out[field] = r
     return out
 
@@ -117,7 +167,7 @@ def parse_operation(op: str, spec: str, *, ppq: int) -> Operation:
         return Operation(field, op, number(value))
     unit = (lambda t: tick_value(t, ppq)) if field in ("tick", "length") else whole_number
     if op == "crescendo":
-        lo, dots, hi = value.partition("..")
+        lo, dots, hi = value.rpartition("..")
         if not dots:
             raise ValueError("crescendo takes LO..HI")
         return Operation(field, op, (unit(lo), unit(hi)))

@@ -46,6 +46,19 @@ def test_a_ramp_is_listed_as_one_line(tmp_path, capsys):
                                    "  bar    2.000   0:02.000  ramp 120 bpm -> 140 bpm to bar 3.000, 5 point(s)"]
 
 
+def test_a_ramp_in_dotted_steps_reads_back_as_one_ramp(tmp_path, capsys):
+    src, dst = song_file(tmp_path / "in.mid", TEMPO_120), tmp_path / "out.mid"
+    rc, out, _err = run(capsys, "tempo", src, "--ramp", "2-4:120-90/1/8.", "-o", dst)
+    assert rc == 0 and out[2] == "  bar    2.000   0:02.000  ramp 120 bpm -> 90 bpm to bar 4.000, 12 point(s)"
+    assert [t for t, _us in tempo_map(read(dst.read_bytes())).points][1:4] == [3840, 4560, 5280]
+
+
+def test_a_point_on_a_half_millisecond_lists_rounded_up(tmp_path, capsys):
+    src = song_file(tmp_path / "in.mid", TEMPO_120, Event(24, b"\xff\x51\x03\x09\x27\xc0"))     # 12.5 ms at PPQ 960
+    rc, out, _err = run(capsys, "tempo", src)
+    assert rc == 0 and out[2].split()[2:] == ["0:00.013", "100", "bpm"]
+
+
 def test_edits_apply_in_order(tmp_path, capsys):
     src, dst = song_file(tmp_path / "in.mid"), tmp_path / "out.mid"
     rc, _out, _err = run(capsys, "tempo", src, "--ramp", "1-2:100-120", "--set", "90@2", "-o", dst)

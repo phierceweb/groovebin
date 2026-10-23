@@ -72,3 +72,64 @@ def test_ticks_of_reads_triplet_note_values():
     assert (ticks_of("1/8t", 960), ticks_of("1/16t", 960)) == (320, 160)
     assert parse_operation("quantize", "position=1/8t", ppq=960).value == 320
     assert parse_select("length=1/16t-1/8t", ppq=960)["length"].hi == 320
+
+
+def test_a_position_written_as_a_time_comes_back_in_milliseconds():
+    assert parse_select("position=0:30-1:05.5", ppq=960, times=True) == {"time": Range(30_000, 65_500)}
+    assert parse_select("position>=12.5s,pitch=36", ppq=960, times=True) == {"time": Range(12_500, None),
+                                                                             "pitch": Range(36, 36)}
+    assert parse_select("position!=90s", ppq=960, times=True) == {"time": Range(90_000, 90_000, outside=True)}
+    assert parse_select("position=0:00.167", ppq=960, times=True) == {"time": Range(167, 167)}
+    assert parse_select("position=0:01.5000", ppq=960, times=True) == {"time": Range(1500, 1500)}
+    assert parse_select("position=9-12", ppq=960, times=True) == {"tick": Range(9, 12)}
+
+
+NINES = "9" * 5000
+
+
+@pytest.mark.parametrize(("text", "message"), [
+    ("position=9-1:30", "a position range is bars or times at both ends, not '9-1:30'"),
+    ("position=1:05-0:30", "runs backwards"), ("position=9,position=0:30", "position is given twice"),
+    ("position=1:5", "'1:5' is not a bar like 9.5 or a time like 1:05.5 or 65.5s"),
+    ("position=1:60", "is not a bar"), ("position=-5s", "is not a bar"), ("length=30s", "not a tick count"),
+    ("position=0:00.1666", "'0:00.1666' is finer than a millisecond, the most a time is read to"),
+    ("position=0:01.50001", "'0:01.50001' is finer than a millisecond"),
+    ("position=1:05.5-", r"a range of '1:05.5-' needs both ends"), ("pitch=36-", "a range of '36-' needs both ends"),
+    ("pitch=-5-10", "a range of '-5-10' starts below 0"), ("position=-0:01-0:02", "a range of '-0:01-0:02' starts below 0"),
+    ("position=٦٥.٥s", "is not a bar like 9.5 or a time"), ("position=1:0٥", "is not a bar like 9.5 or a time"),
+    pytest.param(f"position={NINES}:00", "is not a bar like 9.5 or a time", id="huge-minutes"),
+    pytest.param(f"position={NINES[:400]}s", "is not a bar like 9.5 or a time", id="huge-seconds"),
+])
+def test_a_position_in_time_that_cannot_be_read_is_named(text, message):
+    with pytest.raises(ValueError, match=message):
+        parse_select(text, ppq=960, times=True)
+
+
+@pytest.mark.parametrize(("text", "message"), [
+    ("position=0:30-1:00", "'0:30' is a time: give the position in bars"),
+    ("position=9-1:30", "'1:30' is a time: give the position in bars"),
+    ("position=abc", "'abc' is not a bar like 9.5$"),
+])
+def test_a_caller_that_converts_no_times_is_never_offered_one(text, message):
+    with pytest.raises(ValueError, match=message):
+        parse_select(text, ppq=960)
+
+
+def test_a_crescendo_takes_dotted_values_at_both_ends():
+    assert parse_operation("crescendo", "length=1/8...1/4.", ppq=960) == Operation("length", "crescendo", (720, 1440))
+    assert parse_operation("crescendo", "position=1/8..1/4.", ppq=960).value == (480, 1440)
+
+
+def test_ticks_of_names_every_kind_of_note_value():
+    with pytest.raises(ValueError, match=r"'abc' is not a tick count or a note value like 1/16, 1/8t or 1/8\.$"):
+        ticks_of("abc", 960)
+
+
+def test_ticks_of_reads_dotted_note_values():
+    assert (ticks_of("1/8.", 960), ticks_of(" 1/16. ", 960)) == (720, 360)
+    assert parse_operation("quantize", "position=1/8.", ppq=960).value == 720
+    assert parse_operation("set", "length=1/4.", ppq=960).value == 1440
+    assert (parse_select("length=1/16.-1/8.", ppq=960)["length"].lo, parse_select("length>=1/8.", ppq=960)["length"].lo) \
+        == (360, 720)
+    with pytest.raises(ValueError, match="not a whole number of ticks"):
+        ticks_of("1/64.", 112)

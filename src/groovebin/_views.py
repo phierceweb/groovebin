@@ -38,10 +38,10 @@ def meter_warning(count: int) -> str:
             "the meters that remain")
 
 
-def clock(seconds: float) -> str:
-    """``m:ss.mmm``, a minus sign below 0."""
-    ms = round(abs(seconds) * 1000)
-    return f"{'-' if seconds < 0 else ''}{ms // 60_000}:{ms % 60_000 / 1000:06.3f}"
+def clock(ms: int) -> str:
+    """Whole milliseconds as ``m:ss.mmm``, a minus sign below 0."""
+    whole = abs(ms)
+    return f"{'-' if ms < 0 else ''}{whole // 60_000}:{whole // 1000 % 60:02d}.{whole % 1000:03d}"
 
 
 def tempo_warning(count: int) -> str:
@@ -84,7 +84,7 @@ def listing(name: str, song: Song, tracks: list[int], map_name: str | None) -> l
         label = f" {part.name!r}" if part.name else ""
         lines.append(f"track {i + 1}{label}: {len(part.notes)} note(s), {len(part.events)} other event(s)")
         for n in part.notes:
-            line = (f"  bar {meters.bar(n.tick):8.3f}  {clock(tempos.seconds(n.tick, song.ppq)):>9}  "
+            line = (f"  bar {meters.bar(n.tick):8.3f}  {clock(tempos.milliseconds(n.tick, song.ppq)):>9}  "
                     f"ch {n.channel:2d}  note {n.pitch:3d}  vel {n.velocity:3d}  len {n.length:6d}")
             if map_name:
                 line += f"  {stroke(map_name, n.pitch) or '-'}"

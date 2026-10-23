@@ -50,7 +50,7 @@ PRESETS = (
 BY_NAME = {p.name: p for p in PRESETS}
 WHOLE_PART = ("half-speed", "double-speed", "swing", "change-key")
 THEORY = ("scale-quantize", "diatonic", "change-key")
-STRAIGHT_SWING = "swing takes a straight grid: on a triplet grid every second line falls on a beat"
+STRAIGHT_SWING = "swing takes a straight grid such as 1/16, not a triplet or dotted one"
 HUMANIZE_KEYS = ("pos", "vel", "len")
 
 
@@ -104,8 +104,8 @@ def parse_value(preset: Preset, text: str | None, *, ppq: int) -> object:
         value = _percent(amount) / 100
         if not grid:
             return value, preset.default[1]
-        den, triplet = note_value(grid if grid.strip().startswith("1/") else f"1/{grid.strip()}")
-        if triplet:
+        den, triplet, dotted = note_value(grid if grid.strip().startswith("1/") else f"1/{grid.strip()}")
+        if triplet or dotted:
             raise ValueError(STRAIGHT_SWING)
         grid_ticks(den, ppq)
         return value, den

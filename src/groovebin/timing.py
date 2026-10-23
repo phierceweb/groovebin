@@ -100,6 +100,24 @@ class TempoMap:
         _ppq(ppq)
         return self._units(tick) / (ppq * 1_000_000)
 
+    def milliseconds(self, tick: int, ppq: int) -> int:
+        """Where ``tick`` falls in whole milliseconds from tick 0, rounded half up from the exact time."""
+        _ppq(ppq)
+        per_ms = ppq * 1000
+        return (2 * self._units(tick) + per_ms) // (2 * per_ms)
+
+    def first_tick_at(self, ms: int, ppq: int) -> int:
+        """The first tick whose `milliseconds` is ``ms`` or more; integer arithmetic, so any whole ``ms`` has one."""
+        _ppq(ppq)
+        if not isinstance(ms, int):
+            raise ValueError(f"{ms} is not a whole number of milliseconds")
+        per_ms = ppq * 1000
+        units = per_ms * ms - per_ms // 2
+        if not self.points:
+            return -(-units // DEFAULT_TEMPO)
+        i = max(bisect_right(self._elapsed, units) - 1, 0)
+        return self._ticks[i] - (self._elapsed[i] - units) // self.points[i][1]
+
     def tick_at(self, seconds: float, ppq: int) -> int:
         """The tick nearest ``seconds``, half up: the inverse of `seconds`."""
         _ppq(ppq)

@@ -2,7 +2,8 @@
 window without the DAW. A Range per field picks notes into a Mask (indexes into ``part.notes``);
 every operation reads the note as it was and writes its own field, each written field held to its range
 (pitch 0-127, velocity 1-127, channel 1-16, length from 1); a field no operation names is left alone and
-a note moved before the part's start is refused. Positions are ticks here; `position_ticks` turns a Range in bars into one."""
+a note moved before the part's start is refused. Positions are ticks here; `position_ticks` turns a Range in bars
+into one, `time_ticks` a Range in milliseconds."""
 
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import random
 from dataclasses import dataclass, replace
 
 from ..song import Part
-from ..timing import MeterMap
+from ..timing import MeterMap, TempoMap
 from .edits import Mask, PartWording, masked, rounded, snap
 
 FIELDS = ("tick", "pitch", "velocity", "length", "channel")
@@ -74,6 +75,20 @@ def position_ticks(rng: Range, meters: MeterMap, *, start: int = 0) -> Range:
         hi = (meters.bar_line(int(hi)) if hi_open else meters.bar_line(int(hi) + 1)) - start if whole(hi) else meters.tick(hi) - start
         hi_open = True if whole(rng.hi) else hi_open
     return Range(lo, hi, lo_open, hi_open, rng.outside)
+
+
+def time_ticks(rng: Range, tempos: TempoMap, *, ppq: int, start: int = 0) -> Range:
+    """A position Range in whole milliseconds from the song's start as ticks from ``start``. A note is at its tick's
+    time to the millisecond (`TempoMap.milliseconds`), so a time holds every tick that reads as it."""
+    def first(ms: int | None, past: bool) -> int | None:
+        if ms is None:
+            return None
+        if not isinstance(ms, int):
+            raise ValueError(f"{ms} is not a whole number of milliseconds")
+        return tempos.first_tick_at(ms + past, ppq) - start
+
+    hi = first(rng.hi, not rng.hi_open)
+    return Range(first(rng.lo, rng.lo_open), hi, hi_open=hi is not None, outside=rng.outside)
 
 
 def select(part: Part, *, tick: Range | float | None = None, pitch: Range | float | None = None,

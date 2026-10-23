@@ -29,6 +29,8 @@ def test_parse_value_reads_each_kind_and_its_default():
     assert parse_value(BY_NAME["velocity-limit"], "30..100", ppq=960) == (30, 100)
     assert parse_value(BY_NAME["exp-velocity"], "1.6", ppq=960) == 1.6
     assert parse_value(BY_NAME["fixed-length"], "1/8", ppq=960) == 480
+    assert parse_value(BY_NAME["fixed-length"], "1/8.", ppq=960) == 720
+    assert parse_value(BY_NAME["humanize"], "len=1/32.", ppq=960) == (10, 8, 180)
     assert parse_value(BY_NAME["legato"], "110%", ppq=960) == 110.0
     assert parse_value(BY_NAME["swing"], "60%", ppq=960) == (0.6, 16)
     assert parse_value(BY_NAME["swing"], "58:1/8", ppq=960) == (0.58, 8)
@@ -155,6 +157,12 @@ def test_swing_refuses_a_triplet_grid_whose_odd_lines_fall_on_beats():
         parse_value(BY_NAME["swing"], "60:1/8t", ppq=960)
     with pytest.raises(ValueError, match="swing takes a straight grid"):
         run(Part(960, [note(320), note(960)]), None, "swing", (0.6, 8, True), meters=FOUR_FOUR)
+
+
+def test_swing_refuses_a_dotted_grid():
+    for grid in ("1/8.", "8."):
+        with pytest.raises(ValueError, match="swing takes a straight grid such as 1/16, not a triplet or dotted one"):
+            parse_value(BY_NAME["swing"], f"60:{grid}", ppq=960)
 
 
 def test_the_theory_presets_read_a_key_or_a_number_of_steps():

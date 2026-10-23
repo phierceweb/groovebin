@@ -87,23 +87,30 @@ def delete(part: Part, pitch: int | None = None) -> tuple[Part, int]:
     return replace(part, notes=kept, events=events), len(part.notes) - len(kept)
 
 
-def note_value(text: str) -> tuple[int, bool]:
-    """``1/16`` as (16, False), a triplet ``1/8t`` as (8, True)."""
+def note_value(text: str) -> tuple[int, bool, bool]:
+    """``1/16`` as (16, False, False), a triplet ``1/8t`` as (8, True, False), a dotted ``1/8.`` as (8, False, True)."""
     t = text.strip()
-    digits = t.removeprefix("1/").removesuffix("t")
-    if not t.startswith("1/") or not digits.isdigit():
-        raise ValueError(f"{t!r} is not a note value like 1/16 or 1/8t")
-    return int(digits), t.endswith("t")
+    body = t.removeprefix("1/")
+    triplet, dotted = body.endswith("t"), body.endswith(".")
+    digits = body[:-1] if triplet or dotted else body
+    if not t.startswith("1/") or not (digits.isascii() and digits.isdecimal()):
+        raise ValueError(f"{t!r} is not a note value like 1/16, 1/8t or 1/8.")
+    return int(digits), triplet, dotted
 
 
-def grid_ticks(denominator: int, ppq: int, *, triplet: bool = False) -> int:
-    """A note value's ticks at ``ppq``: 4 is a quarter note, 16 a sixteenth; a triplet is two thirds of it."""
-    name = f"1/{denominator}{'t' * triplet}"
+def grid_ticks(denominator: int, ppq: int, *, triplet: bool = False, dotted: bool = False) -> int:
+    """A note value's ticks at ``ppq``: 4 is a quarter note, 16 a sixteenth; a triplet is two thirds of it, a
+    dotted note one and a half times it."""
+    name = f"1/{denominator}{'t' * triplet}{'.' * dotted}"
+    if triplet and dotted:
+        raise ValueError(f"{name} is a triplet or a dotted note, not both")
     if triplet and denominator not in TRIPLETS:
         raise ValueError(f"{name} is not a triplet of 1/2t to 1/64t")
-    if not triplet and denominator not in GRIDS:
+    if dotted and denominator not in GRIDS:
+        raise ValueError(f"{name} is not a dotted note of 1/1. to 1/64.")
+    if not (triplet or dotted) and denominator not in GRIDS:
         raise ValueError(f"{name} is not a grid of 1/1 to 1/64")
-    whole, share = ppq * (8 if triplet else 4), denominator * (3 if triplet else 1)
+    whole, share = ppq * (8 if triplet else 6 if dotted else 4), denominator * (3 if triplet else 1)
     if whole % share:
         raise ValueError(f"{name} at PPQ {ppq} is not a whole number of ticks")
     return whole // share

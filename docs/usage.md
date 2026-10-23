@@ -107,7 +107,7 @@ timing. Edits apply in the order given.
 | Flag | |
 |---|---|
 | `--set BPM@BAR` | this tempo from that bar line until the next tempo point; a point already on that line is replaced |
-| `--ramp BAR-BAR:BPM-BPM[/STEP]` | the points from the first bar line through the second replaced by a ramp, a point every STEP (a note value such as `1/16` or `1/8t`, or ticks; default `1/16`; at most a quarter note, and shorter than the bars' span), ending on the second tempo |
+| `--ramp BAR-BAR:BPM-BPM[/STEP]` | the points from the first bar line through the second replaced by a ramp, a point every STEP (a note value such as `1/16`, `1/8t` or `1/8.`, or ticks; default `1/16`; at most a quarter note, and shorter than the bars' span), ending on the second tempo |
 | `-o`, `--out FILE` | the file to write; needed with `--set` or `--ramp`, never the input |
 | `--force` | replace an existing `--out` file |
 
@@ -148,14 +148,17 @@ pitch 0–127, velocity 1–127, channel 1–16, a length of at least one tick �
 the track's start is refused. As `groovebin remap` does, it says apart how many note-offs in the input found
 more than one note of their pitch open and how many pairs of one pitch the result leaves nested inside one
 another, since a reader pairs note-offs first in, first out and those lengths read back swapped. It also says how many
-note-offs with no note before them the file dropped on read, as `groovebin remap` does, and how many time
-signatures were skipped, as `groovebin notes` does. All three count the whole file, not just the tracks
-`--track` named.
+note-offs with no note before them the file dropped on read, as `groovebin remap` does, how many time
+signatures were skipped, as `groovebin notes` does, and, when `--select` gives a time, how many tempo events. Each
+counts the whole file, not just the tracks `--track` named.
 
 A condition is `FIELD=VALUE`, `FIELD=LO-HI`, or `FIELD` with `<`, `<=`, `>`, `>=` or `!=` and a value; several are
 joined by commas and must all hold. The fields: `position` in bars, where a whole number means the whole bar
-(`9-12` runs from bar 9's line up to bar 13's, `9.5` is that spot; bar 1 is the first); `pitch`; `velocity`; `length` in ticks
-(`240`, `240t`) or as a note value (`1/16`, or a triplet `1/16t`: two thirds of it, refused where the file's PPQ
+(`9-12` runs from bar 9's line up to bar 13's, `9.5` is that spot; bar 1 is the first), or a time from the file's
+start, `1:05.5` or `65.5s`, to the millisecond: each note's time is read through the file's tempo to the millisecond
+`groovebin notes` prints, so a time it printed picks that note (a range is bars or times at both ends, and takes in
+both); `pitch`; `velocity`; `length` in ticks (`240`, `240t`) or as a note value
+(`1/16`; a triplet `1/16t`, two thirds of it; a dotted `1/16.`, one and a half times it; refused where the file's PPQ
 cannot hold it in whole ticks); `channel`.
 
 An operation is `OP:FIELD[=VALUE]`: `set`, `add`, `mul` (a factor), `min` (raise what is below), `max` (cut what

@@ -17,9 +17,9 @@ from .harmony import MODES, Scale, from_signature, parse_key, scale_name, scale_
 from .maps import note_map
 from .midi import write
 from .song import (KEY_SIGNATURE, Part, Song, key_map, key_signature, meter_map, nested_overlaps, skipped_keys,
-                   skipped_meters)
+                   skipped_meters, skipped_tempos, tempo_map)
 from .transforms import (BY_NAME, PRESETS, THEORY, WHOLE_PART, apply_all, key_at, parse_operation, parse_select,
-                         parse_value, position_ticks, run, select)
+                         parse_value, position_ticks, run, select, time_ticks)
 
 
 def _steps(given: list[tuple[str, str]], ppq: int) -> list[tuple[str, object]]:
@@ -121,7 +121,7 @@ def cmd_transform(args: argparse.Namespace) -> int:
     steps = _steps(args.steps or [], song.ppq)
     if not steps:
         raise InvalidInputError("transform needs at least one --op or --preset")
-    ranges = parse_select(args.select, ppq=song.ppq) if args.select else {}
+    ranges = parse_select(args.select, ppq=song.ppq, times=True) if args.select else {}
     whole = [p for kind, (p, _v) in ((k, v) for k, v in steps if k == "preset") if p in WHOLE_PART]
     if ranges and whole:
         raise InvalidInputError(f"{whole[0]} takes the whole track; drop --select")
@@ -142,7 +142,11 @@ def cmd_transform(args: argparse.Namespace) -> int:
     else:
         seed = int(args.seed)
     rng, meters, tracks, lines = random.Random(seed), meter_map(song), list(song.tracks), []
-    conditions = {f: (position_ticks(r, meters) if f == "tick" else r) for f, r in ranges.items()}
+    conditions = {f: r for f, r in ranges.items() if f not in ("tick", "time")}
+    if "tick" in ranges:
+        conditions["tick"] = position_ticks(ranges["tick"], meters)
+    if "time" in ranges:
+        conditions["tick"] = time_ticks(ranges["time"], tempo_map(song), ppq=song.ppq)
     ambiguous, nested = sum(t.nested_ons for t in song.tracks), 0
     keys, said, major = _source(song, indices, args.key, hold, meters) if sourced else (None, "", None)
     if sourced:
@@ -192,6 +196,8 @@ def cmd_transform(args: argparse.Namespace) -> int:
         print(_views.orphan_warning(orphans))
     if skipped := skipped_meters(song):
         print(_views.meter_warning(skipped))
+    if "time" in ranges and (skipped := skipped_tempos(song)):
+        print(_views.tempo_warning(skipped))
     if sourced and args.key is None and (skipped := skipped_keys(song)):
         print(_views.key_warning(skipped))
     if changed:

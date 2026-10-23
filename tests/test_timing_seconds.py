@@ -1,6 +1,7 @@
 """Ticks to seconds and back over a tempo map."""
 
 import math
+from bisect import bisect_left
 
 import pytest
 
@@ -37,6 +38,29 @@ def test_tick_at_inverts_seconds_to_the_nearest_tick():
     per_tick = TWO.seconds(1, 960)
     assert (TWO.tick_at(per_tick * 0.6, 960), TWO.tick_at(per_tick * 0.4, 960)) == (1, 0)
     assert TempoMap(()).tick_at(0.5, 960) == 960
+
+
+def test_milliseconds_round_each_ticks_time_half_up():
+    assert [TWO.milliseconds(t, 960) for t in (0, 1, 3840, 4800, -960)] == [0, 1, 2000, 2600, -500]
+    assert [TempoMap(((0, 1000),)).milliseconds(t, 2) for t in (1, 3, 5)] == [1, 2, 3]     # 0.5, 1.5, 2.5 ms
+
+
+@pytest.mark.parametrize(("tempos", "ppq"), [
+    (TWO, 960), (TempoMap(()), 960), (TempoMap(((960, 400_000), (2000, 1_000_000))), 960),
+    (TempoMap(((0, 1),)), 1), (TempoMap(((0, 3),)), 7), (TempoMap(((700, 652_177),)), 480),
+])
+def test_first_tick_at_is_the_first_tick_that_reaches_a_millisecond(tempos, ppq):
+    """A tempo sharing no factor with the PPQ puts a tick's time on every fraction of a millisecond, the half too."""
+    ticks = range(-2000, 6000)
+    ms = [tempos.milliseconds(t, ppq) for t in ticks]
+    for m in range(ms[0] + 1, ms[-1] + 1):
+        assert tempos.first_tick_at(m, ppq) == ticks[bisect_left(ms, m)], m
+
+
+def test_first_tick_at_takes_any_whole_millisecond():
+    assert TWO.first_tick_at(10**30, 960) > 0
+    with pytest.raises(ValueError, match="0.5 is not a whole number of milliseconds"):
+        TWO.first_tick_at(0.5, 960)
 
 
 @pytest.mark.parametrize(("call", "message"), [

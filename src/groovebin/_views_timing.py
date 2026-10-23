@@ -20,7 +20,7 @@ def tempo_listing(name: str, tempos: TempoMap, meters: MeterMap, ppq: int) -> li
     i, ended = 0, False
     while i < len(tempos.points):
         tick, usec = tempos.points[i]
-        at = f"  bar {meters.bar(tick):8.3f}  {clock(tempos.seconds(tick, ppq)):>9}"
+        at = f"  bar {meters.bar(tick):8.3f}  {clock(tempos.milliseconds(tick, ppq)):>9}"
         if ramps and tick == ramps[0].start:
             r = ramps.pop(0)
             lines.append(f"{at}  ramp {_bpm(r.from_usec)} -> {_bpm(r.to_usec)} to bar {meters.bar(r.end):.3f}, "
