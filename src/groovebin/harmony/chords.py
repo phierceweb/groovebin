@@ -119,16 +119,21 @@ def chart(text: str) -> list[tuple[Chord, ...]]:
 
 
 
-def revoice(pitch: int, source: Chord, target: Chord) -> int:
+def revoice(pitch: int, source: Chord, target: Chord, *, own_tones: bool = False) -> int:
     """``pitch``, played over ``source``, moved to fit ``target``: the bass note to the new bass note, a third, fifth or
     seventh to the target's own, any other note with the root. The octave is the one nearest the pitch moved by the
-    shorter of the two ways between the chords."""
+    shorter of the two ways between the chords. With ``own_tones``, a note is a third, fifth or seventh only when it
+    is ``source``'s own, so a blue third over a major chord keeps its distance above the root; over a chord with no
+    third (a power or sus chord), a minor or major third takes the target's."""
     if (pitch - source.lowest) % 12 == 0:
         pc, move = target.lowest, target.lowest - source.lowest
     else:
         interval = (pitch - source.root) % 12
-        degree = {3: target.third, 4: target.third, 6: target.fifth, 7: target.fifth, 8: target.fifth,
-                  10: target.seventh, 11: target.seventh}.get(interval)
+        own = {source.third: target.third, source.fifth: target.fifth, source.seventh: target.seventh}
+        silent = source.third is None and interval in (3, 4)
+        degree = (target.third if silent else own.get(pitch % 12)) if own_tones else {
+            3: target.third, 4: target.third, 6: target.fifth, 7: target.fifth, 8: target.fifth,
+            10: target.seventh, 11: target.seventh}.get(interval)
         pc, move = (target.root + interval) % 12 if degree is None else degree, target.root - source.root
     aim = pitch + (move + 6) % 12 - 6
     return min((aim + d for d in range(-6, 6) if (aim + d) % 12 == pc), key=lambda p: (abs(p - aim), p))

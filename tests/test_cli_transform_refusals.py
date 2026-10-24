@@ -22,6 +22,8 @@ def test_a_value_a_preset_cannot_use_is_a_message_not_a_traceback(tmp_path, caps
     (["--op", "add:velocity=10"], "takes IN.mid and -o"),
     (["--presets", "--force"], "takes nothing else"),
     (["--presets", "--seed", "5"], "takes nothing else"),
+    (["--presets", "--chords", "| C |"], "takes nothing else"),
+    (["--presets", "--upper"], "takes nothing else"),
     (["in.mid", "-o", "out.mid", "--op", "crescendo:velocity=-5..500"], "not inside 1..127"),
     (["in.mid", "-o", "out.mid", "--select", "pitch=127", "--op", "reverse:channel"], "not channel"),
     (["in.mid", "-o", "out.mid", "--preset", "legato=" + "9" * 308], "not a finite number"),
@@ -55,7 +57,8 @@ def test_the_input_is_never_overwritten(tmp_path, capsys):
 
 HOSTILE = {"none": "5", "int": "9" * 310, "int?": "9" * 310, "float": "-1", "ticks": "9" * 310,
            "lo..hi": "-5..500", "percent": "9" * 310, "swing": "9" * 310, "humanize": "pos=" + "9" * 310,
-           "key?": "H klingon", "steps": "9" * 310, "key": "Cb klingon"}
+           "key?": "H klingon", "steps": "9" * 310, "key": "Cb klingon",
+           "chart": "| H |"}
 
 
 def test_no_preset_value_reaches_the_user_as_a_traceback(tmp_path, capsys, monkeypatch):

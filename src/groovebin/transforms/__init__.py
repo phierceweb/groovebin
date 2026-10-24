@@ -3,6 +3,7 @@
 
 from .edits import (GRIDS, TRIPLETS, Mask, PartWording, delete, grid_ticks, merge, note_lengths, note_value, quantize,
                     retimed, rounded, scale_velocity, shift, stretch, swing, transpose, velocity_curve)
+from .follow import Followed, chord_at, follow, laid
 from .presets import BY_NAME, PRESETS, THEORY, WHOLE_PART, Preset, operations, parse_value, run
 from .select import (FIELDS, OPS, Operation, Range, apply, apply_all, humanize, position_ticks, select, time_ticks,
                      velocity_band)
@@ -11,6 +12,7 @@ from .theory import Hold, Keys, change_key, diatonic, key_at, moved_key, quantiz
 
 __all__ = ["GRIDS", "TRIPLETS", "note_value", "Mask", "PartWording", "delete", "grid_ticks", "merge", "note_lengths", "quantize", "retimed", "rounded",
            "scale_velocity", "shift", "stretch", "swing", "transpose", "velocity_curve",
+           "Followed", "chord_at", "follow", "laid",
            "BY_NAME", "PRESETS", "THEORY", "WHOLE_PART", "Preset", "operations", "parse_value", "run",
            "FIELDS", "OPS", "Operation", "Range", "apply", "apply_all", "humanize", "position_ticks", "select", "time_ticks",
            "velocity_band", "parse_operation", "parse_select", "ticks_of",

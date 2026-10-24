@@ -188,6 +188,7 @@ band is 1–127.
 | `scale-quantize` | a key, optional | notes outside the key moved to the nearer scale note inside 0–127, down when both are as near |
 | `diatonic` | steps, required (`+2`, `-1`) | notes moved along the key's scale; a note outside it keeps its offset above the scale note below it |
 | `change-key` | a key, required | every note to its degree in the new key, the shorter way round (down at a tritone); the whole track; no `--select` |
+| `follow` | a chart, required, as `--chords` takes it | notes moved onto the chart's chords, each by its place in the chord it was played over |
 
 A key is a note and a scale — `A minor`, `F# dorian`, `Bb` for B-flat major — from major, minor, dorian,
 phrygian, lydian, mixolydian, locrian, harmonic-minor, melodic-minor, major-pentatonic, minor-pentatonic and
@@ -207,6 +208,33 @@ bass map, keyswitches never change pitch, in these presets and in every pitch op
 operations of a pass still move them; a step that would move a played note onto a keyswitch is refused. A drum
 map refuses these presets.
 
+`follow=CHART` moves each selected note from the chord it was played over to CHART's chord at the same place, by
+its place in that chord: the chord's bass note to the new bass note, its own third, fifth and seventh to the new
+chord's, and any other note keeps its distance above the root, in the octave nearest the note moved the shorter
+way; over a chord with no third, such as a power chord, a minor or major third takes the new chord's. That reads a
+slash chord as a bassline does: with `--upper` the notes are an upper part, so a slash chord reads as its chord and
+its bass note is left to the bass, and `--chords` is needed. The chords the notes were played over are `--chords`,
+a chart as `groovebin roots` prints it, else the ones `roots` reads from the transformed tracks' notes — a reading
+made for basslines, so give `--chords` for any other part; a `chords` line at the head of the run says which.
+Both charts are laid from bar 1 and repeat when shorter. A note a 32nd note or less before a chord change on
+either chart counts as on the change, since a played downbeat often comes early.
+
+Nothing is added, dropped or shortened: the run counts the notes that took the chord of a change they lead into,
+the notes held into a chord they are not in, and the notes that landed on a pitch another note of their start and
+channel already had. With no `--select`, polyphonic aftertouch moves with its note. A bass map's keyswitches never
+move, and a note the move takes out of the map's range goes an octave the other way, counted too. A drum map
+refuses `follow`, and so does a `follow` after a step that moves positions or pitches — an operation on either, a
+theory preset, `humanize`, `swing`, a reverse, `half-speed` or `double-speed` — since it reads each note where and
+as it was played; a preset after `follow` that reads the notes' key needs `--key`. A second `follow` reads the
+first one's chart. A note pushed outside 0–127 is refused.
+
+Measured on the 1,256 grooves EZbass installs, each followed from the chords it is labelled with onto another
+groove's of the same meter and length (505 pairs): the bass holds the root, third and fifth for about the same
+share of the time over the new chart as over its own (66.8%, 5.1% and 11.4%, against 66.8%, 4.8% and 11.4%); of
+the new charts' 2,113 changes, 85.2% have the new chord's bass note on them, against 93.0% over their own charts,
+since the line keeps its rhythm and a change the old chart did not have can fall between its notes; and following
+back returns 97.8% of the notes to their pitch. A groove followed onto its own chart comes back unchanged.
+
 | Flag | |
 |---|---|
 | `-o`, `--out FILE` | the file to write (required); never the input |
@@ -217,6 +245,8 @@ map refuses these presets.
 | `--presets` | list the presets and exit; takes no file, flag or operation |
 | `--seed N\|random` | the seed for `random` and `humanize`; 0 by default so a run repeats, `random` prints the one it chose |
 | `--key KEY` | the key the notes are in, for `scale-quantize`, `diatonic` and `change-key` |
+| `--chords CHART` | the chords the notes were played over, for `follow` (default: read from the notes) |
+| `--upper` | for `follow`: the notes are an upper part, not the bass, so a slash chord reads as its chord |
 | `--map MAP` | the note map the notes follow: a bass map's keyswitches never change pitch |
 | `--force` | replace an existing `--out` file |
 

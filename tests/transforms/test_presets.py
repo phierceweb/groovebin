@@ -1,7 +1,7 @@
 import pytest
 
 from groovebin.events import Event, Note
-from groovebin.harmony import Scale
+from groovebin.harmony import Scale, chart, chart_spans
 from groovebin.song import Part
 from groovebin.timing import MeterMap
 from groovebin.transforms import BY_NAME, PRESETS, WHOLE_PART, Operation, PartWording, operations, parse_value, run
@@ -17,9 +17,9 @@ ALL = frozenset(range(8))
 
 
 def test_every_preset_has_a_name_a_kind_and_a_line():
-    assert len({p.name for p in PRESETS}) == len(PRESETS) == 19
+    assert len({p.name for p in PRESETS}) == len(PRESETS) == 20
     assert all(p.takes in ("none", "int", "int?", "float", "ticks", "lo..hi", "percent", "swing", "humanize", "key?",
-                                  "steps", "key") and p.about for p in PRESETS)
+                                  "steps", "key", "chart") and p.about for p in PRESETS)
     assert all(name in BY_NAME for name in WHOLE_PART)
 
 
@@ -199,3 +199,23 @@ def test_a_random_spread_below_0_is_refused_however_it_arrives():
     p = Part(960, [note(0, 60)])
     with pytest.raises(ValueError, match="random takes a spread of 0 or more"):
         run(p, None, "random-velocity", -5)
+
+
+def test_follow_through_run_reads_its_chords_as_spans_on_the_songs_timeline():
+    meters = MeterMap(960, ())
+    source = chart_spans(chart("| C | C |"), meters, 2)
+    target = parse_value(BY_NAME["follow"], "| C | Am |", ppq=960)
+    out = run(Part(960, [note(0, 60), note(3840, 64)]), None, "follow", target, meters=meters, chords=source)
+    assert [n.pitch for n in out.notes] == [60, 60]
+    later = run(Part(960, [note(0, 64)]), None, "follow", target, meters=meters, chords=source, start=3840)
+    assert [n.pitch for n in later.notes] == [60]
+    with pytest.raises(ValueError, match="follow needs a meter map and the chords the notes were played over"):
+        run(Part(960, [note(0, 60)]), None, "follow", target)
+    held = run(Part(960, [note(3840, 16), note(3840, 64)]), None, "follow", target, meters=meters, chords=source,
+               hold=lambda pitch: pitch < 21)
+    assert [n.pitch for n in held.notes] == [16, 60]
+    changing = chart_spans(chart("| C | G |"), meters, 2)
+    shifted = run(Part(960, [note(0, 67)]), None, "follow", chart("| C | C |"), meters=meters, chords=changing, start=3840)
+    assert [n.pitch for n in shifted.notes] == [72]
+    with pytest.raises(ValueError, match="follow needs a value: follow=VALUE"):
+        run(Part(960, [note(0, 60)]), None, "follow", None, meters=meters, chords=source)

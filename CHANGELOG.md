@@ -3,7 +3,19 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
-## [0.7.0] — 2026-10-22
+## [0.8.0] — 2026-10-23
+
+### Added
+- `transform --preset follow=CHART`: a part's notes moved from the chords they were played over (`--chords`, else
+  read from the notes) onto CHART's, each by its place in its chord; the run counts the notes that took the chord
+  they lead into, ring into a chord they are not in, or doubled onto one pitch.
+- `transforms.follow`, `Followed`, `chord_at` and `laid`; `presets.run(…, chords=)`. With a bass map, a note the
+  move takes out of the map's range goes an octave the other way, and is counted.
+- `transform --upper` (`follow(…, bass=False)`): the part is not the bass, so a slash chord reads as its chord.
+- `harmony.revoice(…, own_tones=True)`: only the source chord's own third, fifth and seventh take the target's;
+  over a chord with no third, a minor or major third takes the target's.
+
+## [0.7.0] — 2026-10-23
 
 ### Added
 - Dotted note values (`1/8.`, one and a half times the note) wherever a note value is taken: `transform`'s

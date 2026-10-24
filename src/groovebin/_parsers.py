@@ -78,9 +78,15 @@ def _transform(sub) -> None:
     tr.add_argument("--key", metavar="KEY",
                     help='the key the notes are in, e.g. "A minor" or "F# dorian", for scale-quantize, diatonic and the '
                          "key change-key moves from (default: the file's key signatures, else one estimated)")
+    tr.add_argument("--chords", metavar="CHART",
+                    help='the chords the notes were played over, for follow, e.g. "| C | G |" (default: read from the '
+                         "notes, as groovebin roots reads a bassline)")
+    tr.add_argument("--upper", action="store_true",
+                    help="for follow: the notes are not the bass, so a slash chord reads as its chord and its bass note "
+                         "is left to the bass part")
     tr.add_argument("--map", choices=ALL_NAMES,
                     help="the note map the notes follow: a bass map's keyswitches never change pitch; a drum map "
-                         "refuses the theory presets")
+                         "refuses the theory presets and follow")
     tr.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
 

@@ -84,6 +84,20 @@ def test_revoice_moves_a_note_from_its_chord_to_another(pitch, source, target, e
     assert revoice(pitch, source, target) == expected
 
 
+def test_with_own_tones_only_the_chords_own_third_fifth_and_seventh_take_the_targets():
+    c, a, c7, g7 = Chord(0, "maj"), Chord(9, "maj"), Chord(0, "7"), Chord(7, "7")
+    assert [revoice(p, c, a, own_tones=True) for p in (64, 63, 67, 66)] == [61, 60, 64, 63]
+    assert [revoice(p, c7, g7, own_tones=True) for p in (70, 71)] == [65, 66]
+    assert [revoice(p, c, c, own_tones=True) for p in range(48, 72)] == list(range(48, 72))
+    assert revoice(63, c, a) == 61
+    assert revoice(70, c7, Chord(7, "maj7"), own_tones=True) == 66
+    assert revoice(66, Chord(0, "dim"), Chord(7, "maj"), own_tones=True) == 62
+    assert revoice(68, Chord(0, "aug"), Chord(9, "min"), own_tones=True) == 64
+    power, sus = Chord(0, "5"), Chord(0, "sus4")
+    assert [revoice(p, power, Chord(9, "min"), own_tones=True) for p in (63, 64)] == [60, 60]
+    assert revoice(64, sus, Chord(9, "min"), own_tones=True) == 60 and revoice(64, power, power, own_tones=True) == 64
+
+
 @pytest.mark.parametrize(("name", "number"), [("Cb1", 23), ("B#0", 24), ("Cb4", 59), ("B#3", 60), ("B1", 35),
                                               ("C1", 24), ("Bb0", 22), ("E1", 28)])
 def test_a_note_name_across_the_octave_line_keeps_its_octave(name, number):

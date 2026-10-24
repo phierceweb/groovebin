@@ -120,6 +120,24 @@ def felt(source: str, grid: int, notes: int, moved: int, unmatched: int, held: i
     return line
 
 
+def cells(bars) -> str:
+    """A parsed chart as ``| C | F G |``."""
+    return "| " + " | ".join(" ".join(str(c) for c in bar) for bar in bars) + " |"
+
+
+def follow_lines(anticipated: int, ringing: int, doubled: int, folded: int, map_name: str | None) -> list[str]:
+    lines = []
+    if anticipated:
+        lines.append(f"{anticipated} note(s) just before a chord change took the chord they lead into")
+    if ringing:
+        lines.append(f"{ringing} note(s) ring into a chord they are not in")
+    if doubled:
+        lines.append(f"{doubled} note(s) landed on a pitch another note of their start and channel already had")
+    if folded:
+        lines.append(f"{folded} note(s) moved an octave to stay inside {map_name}'s range")
+    return lines
+
+
 def transform_report(number: int, name: str | None, selected: int, total: int, steps: list[str]) -> str:
     label = f" {name!r}" if name else ""
     return f"track {number}{label}: {selected} of {total} note(s) selected; {'; '.join(steps)}"

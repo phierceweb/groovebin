@@ -13,13 +13,13 @@ from pw_foundation.utils.io import atomic_write_bytes
 
 from . import _views
 from ._files import read_song, refuse_overwrite, track_indices
-from .harmony import MODES, Scale, from_signature, parse_key, scale_name, scale_of
+from .harmony import MODES, Scale, Span, chart, chart_text, from_signature, parse_key, roots, scale_name, scale_of
 from .maps import note_map
 from .midi import write
 from .song import (KEY_SIGNATURE, Part, Song, key_map, key_signature, meter_map, nested_overlaps, skipped_keys,
                    skipped_meters, skipped_tempos, tempo_map)
-from .transforms import (BY_NAME, PRESETS, THEORY, WHOLE_PART, apply_all, key_at, parse_operation, parse_select,
-                         parse_value, position_ticks, run, select, time_ticks)
+from .transforms import (BY_NAME, PRESETS, THEORY, WHOLE_PART, apply_all, follow, key_at, laid, parse_operation,
+                         parse_select, parse_value, position_ticks, run, select, time_ticks)
 
 
 def _steps(given: list[tuple[str, str]], ppq: int) -> list[tuple[str, object]]:
@@ -41,7 +41,12 @@ def _steps(given: list[tuple[str, str]], ppq: int) -> list[tuple[str, object]]:
             if name.strip() not in BY_NAME:
                 raise InvalidInputError(f"--preset {name.strip()!r}: no such preset; --presets lists them")
             preset = BY_NAME[name.strip()]
-            out.append(("preset", (preset.name, parse_value(preset, value if sep else None, ppq=ppq))))
+            try:
+                out.append(("preset", (preset.name, parse_value(preset, value if sep else None, ppq=ppq))))
+            except ValueError as e:
+                if preset.name != "follow" or not sep:
+                    raise
+                raise InvalidInputError(f"follow: {e}") from e
     return out
 
 
@@ -63,6 +68,45 @@ def _source(song: Song, indices: list[int], given: str | None, hold, meters) -> 
         raise InvalidInputError("no key to move notes in: the file has no key signature and too few pitch classes "
                                 "to estimate one; give --key")
     return Scale(major), f"key  {scale_name(major)} (estimated)", major
+
+
+def _chords(song: Song, indices: list[int], given: str | None, hold, meters, end: int) -> tuple[list[Span], str]:
+    """The chords the notes were played over, and the report line naming them."""
+    if given is not None:
+        try:
+            bars = chart(given)
+        except ValueError as e:
+            raise InvalidInputError(f"--chords: {e}") from e
+        return laid(bars, meters, end), f"chords  {_views.cells(bars)} (given)"
+    count = meters.bar_of(max(end - 1, 0))
+    spans = roots((n for i in indices for n in song.tracks[i].notes if not hold(n.pitch)), meters, count)
+    if not spans:
+        raise InvalidInputError("no chords to read from the notes: give --chords")
+    return spans, f"chords  {chart_text(spans, meters, count)} (read from the notes)"
+
+
+MOVING = ("humanize", "reverse-position", "reverse-pitch", "half-speed", "double-speed", "swing", *THEORY)
+
+
+def _follow_order(steps: list[tuple[str, object]], key_given: bool) -> None:
+    """Refuse a follow after a step that moved the notes from where and as they were played over their chords, and a
+    preset reading the notes' key after a follow moved them onto new chords."""
+    moved, followed = None, False
+    for kind, payload in steps:
+        if kind == "ops":
+            moved = moved or next((f"{o.op}:{'position' if o.field == 'tick' else o.field}" for o in payload
+                                   if o.field in ("tick", "pitch")), None)
+            continue
+        name, value = payload
+        if name == "follow" and moved:
+            raise InvalidInputError(f"follow reads the chords the notes were played over, and {moved} has moved them: "
+                                    "put follow first, or run it on the copy")
+        if followed and not key_given and name in THEORY and not (name == "scale-quantize" and value is not None):
+            raise InvalidInputError(f"{name} reads the key the notes were in before follow moved them onto new chords: "
+                                    "name the key with --key")
+        followed = followed or name == "follow"
+        if name in MOVING and not (name == "humanize" and value is not None and value[0] == 0):
+            moved = moved or name
 
 
 def _in_mode(major: int, target: Scale) -> Scale:
@@ -109,7 +153,7 @@ def _landed(before: dict[int, int], part: Part, hold, map_name: str | None) -> N
 def cmd_transform(args: argparse.Namespace) -> int:
     if args.presets:
         if (args.input or args.out or args.steps or args.select or args.track or args.force or args.seed != "0"
-                or args.key or args.map):
+                or args.key or args.map or args.chords is not None or args.upper):
             raise InvalidInputError("--presets lists the presets and takes nothing else")
         print("\n".join(_views.presets(PRESETS)))
         return 0
@@ -131,6 +175,18 @@ def cmd_transform(args: argparse.Namespace) -> int:
     kit = note_map(args.map) if args.map else None
     if kit is not None and kit.kind == "drums" and theory:
         raise InvalidInputError(f"{theory[0]} moves notes in a key, and {args.map} is a drum map: its notes name pieces")
+    follows = [p for p, _v in presets if p == "follow"]
+    if kit is not None and kit.kind == "drums" and follows:
+        raise InvalidInputError(f"follow moves notes onto chords, and {args.map} is a drum map: its notes name pieces")
+    if args.upper and not follows:
+        raise InvalidInputError("--upper is for follow: give --preset follow=CHART")
+    if args.upper and follows and args.chords is None:
+        raise InvalidInputError("--upper needs --chords: the chords cannot be read from notes above the bass")
+    if args.upper and kit is not None and kit.kind == "bass":
+        raise InvalidInputError(f"--upper says the notes are not the bass, and {args.map} is a bass map")
+    if args.chords is not None and not follows:
+        raise InvalidInputError("--chords is the chart follow reads: give --preset follow=CHART")
+    _follow_order(steps, args.key is not None)
     if args.key is not None and not sourced:
         raise InvalidInputError("--key goes unread: scale-quantize=KEY names its own key" if theory else
                                 "--key is the key scale-quantize, diatonic and change-key read: give one of them")
@@ -152,13 +208,19 @@ def cmd_transform(args: argparse.Namespace) -> int:
     if sourced:
         lines.append(said)
         _reads_moved_keys(steps, keys)
+    end = max((n.end for t in song.tracks for n in t.notes), default=0)
+    chords, said = _chords(song, indices, args.chords, hold, meters, end) if follows else (None, "")
+    if follows:
+        lines.append(said)
+    kept = [0, 0, 0, 0]
+    register = kit.range if kit is not None and kit.kind == "bass" else None
     first = min((n.tick for i in indices for n in song.tracks[i].notes if not hold(n.pitch)), default=0)
     changed: list[Scale] = []
     for i in indices:
         part = replace(tracks[i], notes=tuple(replace(n, tag=k) for k, n in enumerate(tracks[i].notes)))
         wanted = set(select(part, **conditions)) if ranges else None
         selected = len(part.notes) if wanted is None else len(wanted)
-        track_keys, track_major = keys, major
+        track_keys, track_major, track_chords = keys, major, chords
         for kind, payload in steps:
             before = {n.tag: n.pitch for n in part.notes}
             if kind == "ops":
@@ -179,6 +241,11 @@ def cmd_transform(args: argparse.Namespace) -> int:
                 part = run(part, mask, preset, value, seed=rng, meters=meters, keys=source, hold=hold, at=first)
                 track_keys, track_major = value, None
                 changed.append(value)
+            elif preset == "follow":
+                target = laid(value, meters, end)
+                got = follow(part, mask, track_chords, target, hold=hold, register=register, bass=not args.upper)
+                part, track_chords = got.part, target
+                kept = [a + b for a, b in zip(kept, (got.anticipated, got.ringing, got.doubled, got.folded), strict=True)]
             else:
                 part = run(part, mask, preset, value, seed=rng, meters=meters, keys=track_keys, hold=hold)
             _landed(before, part, hold, args.map)
@@ -188,6 +255,8 @@ def cmd_transform(args: argparse.Namespace) -> int:
                                              [text for _k, text in args.steps]))
     atomic_write_bytes(args.out, write(replace(song, tracks=tuple(tracks))))
     print("\n".join(lines))
+    for line in _views.follow_lines(*kept, args.map):
+        print(line)
     if ambiguous:
         print(_views.ambiguous_warning(ambiguous))
     if nested:

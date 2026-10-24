@@ -5,12 +5,14 @@ take the whole part; the rest take a selection."""
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..harmony import Scale, parse_key
+from ..harmony import Scale, Span, chart, parse_key
 from ..song import Part
 from ..timing import MeterMap
 from .edits import Mask, PartWording, grid_ticks, masked, note_lengths, note_value, stretch, swing
+from .follow import follow, laid
 from .select import Operation, apply_all, humanize, velocity_band
 from .select_parse import number, tick_value, whole_number
 from .theory import Hold, Keys, change_key, diatonic, scale_quantize
@@ -19,7 +21,7 @@ from .theory import Hold, Keys, change_key, diatonic, scale_quantize
 @dataclass(frozen=True)
 class Preset:
     name: str
-    takes: str                   # none | int | int? | float | ticks | lo..hi | percent | swing | humanize | key? | steps | key
+    takes: str                   # none | int | int? | float | ticks | lo..hi | percent | swing | humanize | key? | steps | key | chart
     default: int | float | tuple[int | float, ...] | None   # the value when none is given; None with a value kind means required
     about: str
 
@@ -46,6 +48,8 @@ PRESETS = (
     Preset("diatonic", "steps", None, "notes moved N steps along the key's scale; a note outside it keeps its offset"),
     Preset("change-key", "key", None, "every note to its degree in KEY, the shorter way — the whole track, key "
            "signatures too"),
+    Preset("follow", "chart", None, "notes moved onto CHART's chords, each by its place in the chord it was played "
+           "over: --chords, else the chords read from the notes"),
 )
 BY_NAME = {p.name: p for p in PRESETS}
 WHOLE_PART = ("half-speed", "double-speed", "swing", "change-key")
@@ -86,6 +90,8 @@ def parse_value(preset: Preset, text: str | None, *, ppq: int) -> object:
         return parse_key(text)
     if preset.takes == "steps":
         return whole_number(text)
+    if preset.takes == "chart":
+        return chart(text)
     if preset.takes in ("int", "int?"):
         return whole_number(text)
     if preset.takes == "float":
@@ -148,11 +154,12 @@ def operations(name: str, value: object = None) -> list[Operation]:
 
 def run(part: Part, mask: Mask | None, name: str, value: object = None, *, seed: int | random.Random = 0,
         meters: MeterMap | None = None, start: int = 0, keys: Keys | None = None, hold: Hold | None = None,
-        at: int | None = None) -> Part:
+        at: int | None = None, chords: Sequence[Span] | None = None) -> Part:
     """Preset ``name`` on the selected notes (every note when ``mask`` is None); a `WHOLE_PART` preset
     takes the whole part and refuses a mask; swing needs ``meters`` and the part's ``start`` on them; the theory
     presets read the notes' key from ``keys`` — key points on the song's timeline, from ``start`` — or scale-quantize
-    from its own value, never move a ``hold`` pitch, and change-key reads its source at part tick ``at``."""
+    from its own value, never move a ``hold`` pitch, and change-key reads its source at part tick ``at``; follow moves
+    the notes from ``chords``, spans on the song's timeline, onto its chart laid over ``meters``."""
     if name not in BY_NAME:
         raise ValueError(f"no preset {name!r}: {', '.join(BY_NAME)}")
     if name in WHOLE_PART and mask is not None:
@@ -161,6 +168,15 @@ def run(part: Part, mask: Mask | None, name: str, value: object = None, *, seed:
         if start and keys is not None and not isinstance(keys, Scale):
             keys = [(t - start, scale) for t, scale in keys]
         return _theory(part, mask, name, value, keys, hold or (lambda pitch: False), at)
+    if name == "follow":
+        if value is None:
+            raise ValueError("follow needs a value: follow=VALUE")
+        if meters is None or chords is None:
+            raise ValueError("follow needs a meter map and the chords the notes were played over")
+        end = start + max((n.end for n in part.notes), default=0)
+        source, target = ([Span(s.start - start, s.end - start, s.chord) for s in spans]
+                          for spans in (chords, laid(value, meters, end)))
+        return follow(part, mask, source, target, hold=hold or (lambda pitch: False)).part
     if name == "half-speed":
         return stretch(part, 2.0)
     if name == "double-speed":
