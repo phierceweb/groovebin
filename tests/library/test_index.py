@@ -97,6 +97,15 @@ def test_a_row_that_does_not_parse_or_runs_out_of_range_is_a_failed_row_not_a_fa
     assert (errors["ok.mid"], errors["inf.mid"][:14], errors["big.mid"][:13]) == (None, "HH_Type 'inf':", "KK_Vel '1e30'")
 
 
+def test_a_csv_meter_in_other_digits_is_no_hint(tmp_path):
+    lines = [csv_row("a.mid", "G", "Verse", "Rock", meter, "120", True, "0.5", "0.5", TWO_BARS)
+             for meter in ("²/4", "٣/٤")]
+    lines[1][0] = "b.mid"
+    db = tmp_path / "digits.sqlite"
+    assert build(db, csv_path=write_csv(tmp_path / "d" / "MidiDb.csv", lines), map_name="gm")["parsed"] == 2
+    assert [json.loads(r["meters"]) for r in rows(db)] == [[[0, 4, 4]], [[0, 4, 4]]]
+
+
 def test_a_rebuild_is_identical_and_a_failed_build_keeps_the_old_index(csv_index, tmp_path):
     source, db, counts = csv_index
     before = rows(db)

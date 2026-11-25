@@ -57,7 +57,7 @@ def test_range_syntax():
         assert (condition, [round(b, 9) for b in got]) == (want, bounds), text
     with pytest.raises(ValueError, match=r"bad range '130-100': 130 is above 100"):
         parse_range("130-100")
-    for bad in ("fast", "<", "1-2-3", "=5"):
+    for bad in ("fast", "<", "1-2-3", "=5", "١٠٠-١٣٠", "<٢", "٩٨", "1.٥"):
         with pytest.raises(ValueError, match="bad number filter"):
             parse_range(bad)
 

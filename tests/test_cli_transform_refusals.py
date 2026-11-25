@@ -38,6 +38,7 @@ def test_a_value_a_preset_cannot_use_is_a_message_not_a_traceback(tmp_path, caps
     (["in.mid", "-o", "out.mid", "--op", "add:velocity=1", "--seed", "-1"], "--seed '-1'"),
     (["in.mid", "-o", "out.mid", "--op", "add:position=-9999"], "before the track's start"),
     (["in.mid", "-o", "out.mid", "--op", "add:velocity=1", "--seed", "²"], "--seed '²': 0 or more, or random"),
+    (["in.mid", "-o", "out.mid", "--op", "add:velocity=1", "--seed", "٣"], "--seed '٣': 0 or more, or random"),
     (["in.mid", "-o", "out.mid", "--track", "3", "--op", "add:velocity=1"], "track 3 is not in"),
     (["in.mid", "-o", "out.mid", "--select", "position=9-0:30", "--op", "add:velocity=1"], "bars or times at both ends"),
 ])

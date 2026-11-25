@@ -75,7 +75,7 @@ A note map says what each note plays. Load one with `maps.note_map(name)`; use `
 
 `groovebin.harmony` is pitch classes, chords and charts in plain Python.
 
-- Read chords with `parse_chord("Am7/G")` and charts with `chart("| Am | F G | % |")` — bars of chords that share each bar evenly. `chart_spans(chart, meters, bars)` lays a chart over bars as `Span`s, repeating a shorter chart.
+- Read chords with `parse_chord("Am7/G")` and charts with `chart("| Am | F G | % |")` — bars of chords that share each bar evenly; with `rests=True` a `-` or `N.C.` is a rest, read as None, which `chart_spans` leaves as a gap between spans and `bass_line` keeps out of. `chart_spans(chart, meters, bars)` lays a chart over bars as `Span`s, repeating a shorter chart.
 - `roots(notes, meters, bars)` gives the chords a bassline implies, and `chart_text` prints them as a chart. Expect the root to match EZbass's labelled bass note on about nine beats in ten, and a power chord (`A5`) where the bass never plays the third; see [usage.md](usage.md#groovebin-roots) for the measurement.
 - `scale_of(notes)` names the scale a line holds by the tonic of its major key; `scale_name` gives the major and relative-minor pair. Do not present the tonic as the key — a bassline seldom says which of the pair is home.
 - `revoice(pitch, source, target)` moves a note played over one chord to fit another, keeping its role: the bass note, a third, fifth or seventh.
@@ -87,7 +87,7 @@ A note map says what each note plays. Load one with `maps.note_map(name)`; use `
 
 - Search with `library.search.search(db, **filters)`, rank by rhythm with `similar(db, bars)`, and fetch one row with `get(db, id)`; `library.pattern.pattern(row)` turns a row into bars you can lay out.
 - Check the schema error, not the SQL error: an index an older groovebin wrote is refused with a `ValueError` that says to build it again.
-- `library.generate` picks drum bars into a phrase (`load_pool`, `phrase`, `phrase_song`); `library.compose` plans a part over a song's sections from one group. Neither writes a file.
+- `library.generate` picks drum bars into a phrase (`load_pool`, `phrase`, `phrase_song`); pass `phrase(…, pick=functools.partial(library.drum_picker.pick_drums, rhythm=bars, voices=voices))`, with the bars and voices `groove_text.parse_rhythm` gives, to pick them to a typed kick and snare instead; `library.compose` plans a part over a song's sections from one group. Neither writes a file.
 
 ## Drum feel
 
@@ -96,7 +96,7 @@ A note map says what each note plays. Load one with `maps.note_map(name)`; use `
 ## Bass
 
 - `library.bassline.analyze(notes, meters, bars, bass_map=, drums=, drum_map=, spans=)` reports a line's rhythm, its lock with a drum part's kick and snare, and how it plays chord spans.
-- `library.bass_rules.bass_line(kicks, snares, spans, ppq, seed=)` writes a line by rules; `library.bass_picker` picks bars from a bass library (`load_bass_bars`, `pick_bass`) and lays them onto a chart (`lay`), re-voiced, with their keyswitches and controllers.
+- `library.bass_rules.bass_line(kicks, snares, spans, ppq, seed=)` writes a line by rules — `snare_hits=` puts notes on the snare strokes too, `root_only=True` plays the chord's bass note in place of the chord tones drawn by rate, and `push=True` has notes in the last eighth before a change of bass note play the new one; `library.bass_picker` picks bars from a bass library (`load_bass_bars`, `pick_bass`) and lays them onto a chart (`lay`), re-voiced, with their keyswitches and controllers.
 - Kicks and snares come from `library.groove.voices(drum_map)`, never from note numbers.
 
 ## Adding a note map

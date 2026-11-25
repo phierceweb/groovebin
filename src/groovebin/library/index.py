@@ -85,7 +85,7 @@ def _value(text: str, kind):
 
 def _stand_in(text: str | None) -> tuple[int, int] | None:
     num, _, den = (text or "").partition("/")
-    return (int(num), int(den)) if num.strip().isdigit() and den.strip().isdigit() and int(num) and int(den) else None
+    return (int(num), int(den)) if (num + den).isascii() and num.strip().isdigit() and den.strip().isdigit() and int(num) and int(den) else None
 
 
 def _parse(data: bytes, meter_hint: tuple[int, int] | None, map_name: str | None) -> tuple[dict, dict]:

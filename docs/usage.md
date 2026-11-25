@@ -163,9 +163,9 @@ cannot hold it in whole ticks); `channel`.
 
 An operation is `OP:FIELD[=VALUE]`: `set`, `add`, `mul` (a factor), `min` (raise what is below), `max` (cut what
 is above), `random` (±VALUE, uniform), `flip` (mirror around VALUE), `quantize` (a position to the nearest VALUE
-grid line of its bar, a length to the nearest multiple of VALUE ticks), `crescendo` (`LO..HI` ramped across the
-selection by position), `exp` (a velocity curve exponent), `reverse` (no value: the selection's span mirrored,
-first for last). Position and length values are ticks or note values as above; one past the 268435455 ticks
+grid line of its bar, a length to the nearest multiple of VALUE ticks and never less than VALUE), `crescendo`
+(`LO..HI` ramped across the selection by position), `exp` (a velocity curve exponent), `reverse` (no value: the
+selection's span mirrored, first for last). Position and length values are ticks or note values as above; one past the 268435455 ticks
 a file can hold is refused as it is read, and so is a gap the result would leave between two events. `exp` takes velocity
 only; `crescendo` and `reverse` take position, pitch, velocity or length, not channel. A `LO..HI` velocity
 band is 1–127.
@@ -374,11 +374,13 @@ keyswitches are counted by what they do instead of being read as notes.
 
     groovebin bass --drums verse.mid --drum-map addictive-drums-2 --chords "| Am | F G | C | E |" -o bass.mid
     groovebin bass --drums verse.mid --drum-map gm --roots-from my-bassline.mid --map ezbass --mute -o bass.mid
+    groovebin bass --drums verse.mid --drum-map gm --chords "| A5 | D5 E5 |" --on kick,snare --root-only --push --approach 0 -o bass.mid
 
 Writes a bassline over a drum file's kicks and a chord chart, by rules measured on EZbass's grooves and
 the chords they are labelled with:
 
-- a note on every kick, at the kick's velocity
+- a note on every kick, at the kick's velocity; strokes that land almost together, within about a 32nd note of
+  each other or of a change, can share one note
 - the chord's bass note on the first beat and on every change, with or without a kick there: those grooves
   put it on 94% of changes
 - a chord tone between changes, drawn in the proportions they play them: root 54, fifth 13, third 7,
@@ -388,6 +390,30 @@ the chords they are labelled with:
   step below or above the new bass note, or a fifth above it
 - each note in the octave nearest the one before, inside `--low` to `--high`, and held to the next note,
   two beats at most
+
+A change, in these rules, is a new bass note: `Am` to `Am7` is none, `C` to `C/E` is one.
+
+Three options change those rules, for a line that plays its roots with the kick and the snare:
+
+- `--on kick,snare` gives the snare strokes notes as well, at the snare's velocity; strokes almost together can
+  share one, as above
+- `--root-only` draws no chord tones: where the rules would draw one by rate, the note is its chord's bass note
+  (`--push` still moves it, as below)
+- `--push` gives a note in the last eighth before a change, or up to a 32nd note ahead of that eighth, the new
+  bass note. A note is pushed once, onto the first change after it; never across a rest, and never a note that
+  is itself on a change. It changes pitches and adds no note of its own; the rules' own note on a change (the
+  one they add when no stroke's note lands there) is left out once that change has been pushed
+
+A `-` or `N.C.` in the chart, written exactly so, is a rest: it takes a chord's share of its bar (`| A5 - |` is
+half a bar of A5 and half a bar of rest), and no note starts or rings in it, whatever the drums play there. The
+chord after a rest gets no note of its own: the first stroke the line plays in it, or in the chords straight
+after it that keep its bass note, takes that bass note and is never pushed. A note that a stroke would
+put within a 32nd note of the chart's first beat, of a change, or of where the chords come back after a rest is
+played there instead. Only the rules take a rest: with `--library`, and in every other command's chart, one is
+refused.
+
+With `--push`, `--root-only`, or a rest anywhere in the chart, no approach notes are written: `--approach` is
+then 0 unless given, and a rate above 0 is refused.
 
 `--library` picks real bars from a bass library instead of the rules: an index built with a bass map and
 the chord files beside its grooves (`groovebin index <folder> --map ezbass`). Each drum bar takes the
@@ -405,21 +431,25 @@ and `--tempo` narrow the bars it picks from, and the report names each bar's sou
 
 `--roots-from` takes the chords from another bassline instead, as `groovebin roots` reads them, and prints
 the chart it used. With `--map ezbass`, `--mute` puts EZbass's loud-mute keyswitch on each snare the bass
-leaves open, as its own "snare to mute" does. The file holds the drum file's tempo and meter on a first
+leaves open, as its own "snare to mute" does; with `--on kick,snare` no snare is left open and `--mute` is
+refused. The file holds the drum file's tempo and meter on a first
 track and the line on a second, at its PPQ. The report counts the notes on kicks, the chord changes, the
-approach notes and the mutes; the same seed and files give the same line.
+approach notes and the mutes, and the notes on snares and the pushes when those are asked for; the same seed and files give the same line.
 
 | Flag | |
 |---|---|
 | `--drums FILE` | the MIDI file holding the drums (required) |
 | `--drum-map MAP` | the drum map the drums follow (required) |
 | `--drum-track N` | read only this track of `--drums`; repeat for more |
-| `--chords CHART` | the chords, a chart that repeats when shorter than the drums |
+| `--chords CHART` | the chords, a chart that repeats when shorter than the drums; `-` or `N.C.` is a rest |
 | `--roots-from FILE` | take the chords from a bassline instead |
 | `-o`, `--out FILE` | the file to write (required) |
 | `--map MAP` | the bass map to write in, and to read `--roots-from`'s keyswitches with |
 | `--mute` | the map's loud-mute keyswitch on each snare the bass leaves open; not with `--library` |
-| `--approach PCT` | how often a change gets an approach note, 0–100 (default 58.8); not with `--library` |
+| `--approach PCT` | how often a change gets an approach note, 0–100 (default 58.8; 0 with `--push`, `--root-only` or a rest in the chart, where more is refused); not with `--library` |
+| `--on kick\|kick,snare` | the drum strokes that get a note (default `kick`); not with `--library` |
+| `--root-only` | the chord's bass note in place of the chord tones drawn by rate; not with `--library` |
+| `--push` | a note in the last eighth before a change of bass note plays the new bass note; not with `--library` |
 | `--library DB` | pick real bars from a bass library index instead of the rules |
 | `--role ROLE` | with `--library`, only patterns of this role |
 | `--tempo RANGE` | with `--library`, only patterns in this tempo range, as `groovebin search` takes it |
@@ -573,6 +603,8 @@ print, and says so.
 ### groovebin generate
 
     groovebin generate --meter 4/4 --bars 16 --fills --role verse -o verse.mid
+    groovebin generate --meter 4/4 --bars 16 --role verse -o verse.mid \
+        --rhythm "kick=..x.....x.......|x.......x.x...x. snare=....x.......x..."
 
 Writes a drum phrase picked bar by bar from the library: a picker over real bars, not a model. The
 first bar starts a pattern; each next bar has the kick and snare onsets (the notes each pattern's drum
@@ -581,6 +613,16 @@ its own pattern. With `--fills`, every fourth bar is the fill bar nearest the gr
 fill whose last bar is only a landing gives the bar before it. Timing moves up to 5 ticks and velocity
 up to 6, and each note ends by the next note of its pitch, so a reader pairs every note-off with its own
 note. The file holds the first pick's tempo and the meter, at 960 PPQ.
+
+`--rhythm` picks the bars another way: to a kick and a snare you type, as lanes the way `search --rhythm`
+reads them — a step per sixteenth, `|` between bars, each bar the meter's length, a lane of one bar playing in
+every bar, and the typed bars repeating to `--bars`. A bar is off by one step for each sixteenth where its kick,
+or its snare, differs from the lane typed; only the lanes given count, and a hands lane is refused. The phrase is
+the sequence of bars with the fewest steps off, where a change of pattern — any bar that is not the bar after
+the last pick in its own pattern — counts as one step, so one pattern plays in its own order for as long as it
+fits; among equal sequences a pattern starts on its first bar, and the seed decides the rest. The bars bring
+their own hands, velocities and timing. With `--fills`, every fourth bar is still the fill nearest the groove
+bar it replaces. The listing adds how many bars are exact, the steps off and the changes of pattern.
 
 Bars from different patterns can join awkwardly, and two options smooth the joins. Without them, a seed
 gives the same notes at the same times it always has:
@@ -603,6 +645,7 @@ the same seed, options and index give the same file. Patterns need a drum map (`
 | `--role ROLE` | intro, verse, pre-chorus, chorus, bridge or outro |
 | `--tempo RANGE` | as `groovebin search` takes it |
 | `--intensity RANGE` | as `groovebin search` takes it |
+| `--rhythm LANES` | pick the bars that play this typed kick and snare, staying on one pattern while it fits |
 | `--fills` | every fourth bar from a fill pattern |
 | `--crash` | a crash on the downbeat after each fill |
 | `--level` | level each bar's velocities to the phrase's kick and snare median |

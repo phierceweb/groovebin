@@ -87,6 +87,11 @@ def test_the_register_and_mutes_with_the_ezbass_map(tmp_path, capsys):
     (("--chords", "", "--roots-from", "x.mid"), "--chords or --roots-from, not both"),
     (("--chords", "Am", "--map", "gm"), "gm is a drum map"),
     (("--chords", "Am", "--map", "ezbass", "--low", "E0", "--high", "E1"), "ezbass's keyswitches"),
+    (("--chords", "Am", "--map", "ezbass", "--mute", "--on", "kick,snare"), "with --on kick,snare there is none"),
+    (("--chords", "| Am | F |", "--push", "--approach", "50"), "approach notes are not written"),
+    (("--chords", "| Am - | F |", "--approach", "50"), "approach notes are not written"),
+    (("--chords", "| Am | F - |", "--approach", "50"), "approach notes are not written"),
+    (("--chords", "| Am | F |", "--root-only", "--approach", "50"), "approach notes are not written"),
 ])
 def test_refusals(tmp_path, capsys, extra, message):
     rc, _text, err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), "--drum-map", "gm", *extra,
@@ -158,3 +163,60 @@ def test_a_library_register_starts_above_its_keyswitches(tmp_path, capsys, bass_
     rc, _text, err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), "--drum-map", "gm", "--chords", "Am",
                          "--library", bass_library, "--low", "A-1", "--high", "A0", "-o", tmp_path / "x.mid")
     assert rc == 1 and "ezbass's keyswitches" in err and not (tmp_path / "x.mid").exists()
+
+
+def test_notes_on_kicks_and_snares_at_the_roots(tmp_path, capsys):
+    out = tmp_path / "bass.mid"
+    rc, text, err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), "--drum-map", "gm", "--chords", "| Am | F |",
+                        "--seed", 4, "--approach", 0, "--on", "kick,snare", "--root-only", "-o", out)
+    assert (rc, err) == (0, "")
+    assert text.splitlines()[0] == ("bass over 2 bar(s) of d.mid: 8 note(s), 4 on a kick, 4 on a snare, "
+                                    "1 chord change(s), 0 approach note(s)")
+    notes = bass_notes(out)
+    assert [n.tick for n in notes] == [b * BAR + t for b in (0, 1) for t in (0, 960, 1920, 2880)]
+    assert [n.pitch % 12 for n in notes] == [9] * 4 + [5] * 4
+
+
+def test_a_push_is_counted_and_moves_the_last_eighth(tmp_path, capsys):
+    out, flags = tmp_path / "bass.mid", ("--drum-map", "gm", "--chords", "| Am | F |", "--seed", 4, "--approach", 0,
+                                         "--root-only", "--push", "--force")
+    _rc, text, _err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), *flags, "-o", out)
+    assert text.splitlines()[0].endswith("0 approach note(s), 0 push(es)")
+    kick = tuple(Note(t, 120, 10, 36, 100) for t in (0, 1920, BAR - 480, BAR, BAR + 1920))
+    (tmp_path / "p.mid").write_bytes(write(Song(960, 0, (Part(960, kick, (TEMPO, METER)),))))
+    _rc, text, _err = run(capsys, "bass", "--drums", tmp_path / "p.mid", *flags, "-o", out)
+    assert text.splitlines()[0].endswith("0 approach note(s), 1 push(es)")
+    assert [(n.tick, n.pitch % 12) for n in bass_notes(out)][2:4] == [(BAR - 480, 5), (BAR, 5)]
+
+
+@pytest.mark.parametrize("flag", [("--on", "kick,snare"), ("--root-only",), ("--push",)])
+def test_the_library_takes_none_of_the_rule_options(tmp_path, capsys, bass_library, flag):
+    rc, _text, err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), "--drum-map", "gm", "--chords", "Am",
+                         "--library", bass_library, *flag, "-o", tmp_path / "x.mid")
+    assert rc == 1 and "--library picks real bars" in err and flag[0] in err
+
+
+def test_a_rest_in_the_chart_keeps_the_bass_out(tmp_path, capsys):
+    out = tmp_path / "bass.mid"
+    rc, _text, err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), "--drum-map", "gm", "--chords", "| Am - | F - |",
+                         "--seed", 4, "--approach", 0, "--on", "kick,snare", "--root-only", "-o", out)
+    assert (rc, err) == (0, "")
+    assert [(n.tick, n.pitch % 12) for n in bass_notes(out)] == [(0, 9), (960, 9), (BAR, 5), (BAR + 960, 5)]
+    assert all(n.tick + n.length <= (n.tick // BAR) * BAR + 1920 for n in bass_notes(out))
+
+
+def test_a_rest_is_for_the_rules_alone(tmp_path, capsys, bass_library):
+    rc, _text, err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), "--drum-map", "gm", "--chords", "| Am - |",
+                         "--library", bass_library, "-o", tmp_path / "x.mid")
+    assert rc == 1 and "holds a rest" in err
+    rc, _text, err = run(capsys, "analyze", drums(tmp_path / "d.mid"), "--chords", "| Am N.C. |")
+    assert rc == 1 and "holds a rest" in err
+
+
+def test_a_push_or_a_rest_writes_no_approach_notes_unasked(tmp_path, capsys):
+    for seed in range(8):
+        for extra in (("--chords", "| Am | F |", "--push"), ("--chords", "| Am - | F - |"), ("--chords", "| Am | F - |"),
+                      ("--chords", "| Am | F |", "--root-only")):
+            rc, text, err = run(capsys, "bass", "--drums", drums(tmp_path / "d.mid"), "--drum-map", "gm", *extra,
+                                "--seed", seed, "--force", "-o", tmp_path / "a.mid")
+            assert (rc, err) == (0, "") and " 0 approach note(s)" in text.splitlines()[0]

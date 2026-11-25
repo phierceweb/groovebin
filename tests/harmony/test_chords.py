@@ -1,6 +1,7 @@
 import pytest
 
-from groovebin.harmony import Chord, chart, note_number, parse_chord, pitch_class, pitch_name, revoice
+from groovebin.harmony import Chord, chart, chart_spans, note_number, parse_chord, pitch_class, pitch_name, revoice
+from groovebin.timing import MeterMap
 
 CHORDS = {
     "C": Chord(0, "maj"), "Am": Chord(9, "min"), "F#m7": Chord(6, "min7"), "Bb7": Chord(10, "7"),
@@ -102,3 +103,23 @@ def test_with_own_tones_only_the_chords_own_third_fifth_and_seventh_take_the_tar
                                               ("C1", 24), ("Bb0", 22), ("E1", 28)])
 def test_a_note_name_across_the_octave_line_keeps_its_octave(name, number):
     assert note_number(name) == number
+
+
+@pytest.mark.parametrize("text", ["٣٦", "²", "E١", "C²"])
+def test_a_note_takes_ascii_digits_only(text):
+    with pytest.raises(ValueError, match="is not a note: a name with its octave"):
+        note_number(text)
+
+
+def test_a_chart_takes_rests_only_when_asked():
+    am = parse_chord("Am")
+    assert chart("| Am - | N.C. | % |", rests=True) == [(am, None), (None,), (None,)]
+    for text in ("| Am - |", "Am N.C."):
+        with pytest.raises(ValueError, match="a rest"):
+            chart(text)
+
+
+def test_a_rest_leaves_a_gap_between_spans():
+    four = MeterMap(960, ((0, 4, 4),))
+    spans = chart_spans(chart("| Am - | - F |", rests=True), four, 2)
+    assert [(s.start, s.end, str(s.chord)) for s in spans] == [(0, 1920, "Am"), (3840 + 1920, 7680, "F")]

@@ -160,6 +160,8 @@ def _operated(o: Operation, x: float, tick: int, span: dict[str, tuple[int, int]
     if o.op == "quantize":
         if o.field == "tick" and meters is not None:
             return snap(start + rounded(x), int(v), meters) - start
+        if o.field == "length":
+            return max(rounded(x / v), 1) * v
         return rounded(x / v) * v
     if o.op == "crescendo":
         lo, hi = v

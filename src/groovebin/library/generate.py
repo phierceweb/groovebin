@@ -10,7 +10,7 @@ import random
 import re
 import statistics
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from itertools import pairwise
 from dataclasses import dataclass, replace
 from functools import cache
@@ -88,7 +88,7 @@ class Phrase:
 
 
 def parse_meter(text: str) -> tuple[int, int]:
-    m = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", text)
+    m = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", text, re.ASCII)
     num, den = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
     if not (num and den and den & (den - 1) == 0 and bar_ticks((num, den)) >= SIXTEENTH):
         raise ValueError(f"bad meter {text!r}: N/D with D a power of two and a bar of at least a sixteenth note")
@@ -148,7 +148,7 @@ def load_pool(db_path: Path, *, sig: tuple[int, int], category: str | None = Non
     return Pool(sig, patterns, tuple(fill_bars), left_out)
 
 
-def _nearest(candidates: tuple[Bar, ...], target: int, rng: random.Random) -> tuple[Bar, int]:
+def nearest(candidates: tuple[Bar, ...], target: int, rng: random.Random) -> tuple[Bar, int]:
     distances = [(b.onsets ^ target).bit_count() for b in candidates]
     low = min(distances)
     return rng.choice([b for b, d in zip(candidates, distances, strict=True) if d == low]), low
@@ -162,9 +162,9 @@ def generate(pool: Pool, bars: int, rng: random.Random, *, fills: bool = False) 
         if prev is None:
             prev, distance = rng.choice([b for b in grooves if b.index == 0]), None
         else:
-            prev, distance = _nearest(grooves, pool.following(prev).onsets, rng)
+            prev, distance = nearest(grooves, pool.following(prev).onsets, rng)
         if fills and (i + 1) % FILL_EVERY == 0:
-            fill, near = _nearest(pool.fills, prev.onsets, rng)
+            fill, near = nearest(pool.fills, prev.onsets, rng)
             picks.append(Pick(fill, True, near, prev))
         else:
             picks.append(Pick(prev, False, distance))
@@ -230,12 +230,13 @@ def _ended(notes: list[Note]) -> list[Note]:
 
 
 def phrase(pool: Pool, *, bars: int, seed: int, fills: bool = False, map_name: str | None = None,
-           unmapped: str = "keep", crash: bool = False, level: bool = False) -> Phrase:
-    """``bars`` bars from ``pool``, humanised and written in ``map_name`` (the pool's own map when it has
-    one); a note with no counterpart there is kept at its pitch or dropped, per ``unmapped``. With ``level``
-    the bars are `levelled` first, and with ``crash`` each fill is followed by one (`crashed`). Every note ends by
-    the next of its pitch (`_ended`). The same pool, seed and options give the same phrase; ``level`` leaves the
-    picks and the timing as they are."""
+           unmapped: str = "keep", crash: bool = False, level: bool = False,
+           pick: Callable[..., list[Pick]] | None = None) -> Phrase:
+    """``bars`` bars from ``pool`` — picked by ``pick`` in place of `generate`, called as it is — humanised and
+    written in ``map_name`` (the pool's own map when it has one); a note with no counterpart there is kept at its
+    pitch or dropped, per ``unmapped``. With ``level`` the bars are `levelled` first, and with ``crash`` each fill is
+    followed by one (`crashed`). Every note ends by the next of its pitch (`_ended`). The same pool, seed and options
+    give the same phrase; ``level`` leaves the picks and the timing as they are."""
     check_unmapped(unmapped)
     if seed < 0:
         raise ValueError(f"seed {seed}: a seed is 0 or more")
@@ -243,7 +244,7 @@ def phrase(pool: Pool, *, bars: int, seed: int, fills: bool = False, map_name: s
         raise ValueError(f"the pool's patterns follow {' and '.join(pool.maps)}: name the map to write the phrase in")
     target_map = map_name or pool.maps[0]
     rng = random.Random(seed)
-    picks = generate(pool, bars, rng, fills=fills)
+    picks = (pick or generate)(pool, bars, rng, fills=fills)
     span, maps = bar_ticks(pool.sig), [p.bar.map for p in picks]
     per_bar, target, added = [list(p.bar.notes) for p in picks], None, ()
     if level:

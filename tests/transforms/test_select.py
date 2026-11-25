@@ -269,3 +269,9 @@ def test_a_value_of_the_wrong_shape_is_refused_by_name():
         operations("velocity-limit", 5)
     with pytest.raises(ValueError, match="humanize takes"):
         operations("humanize", 5)
+
+
+def test_a_length_quantize_gives_no_note_less_than_one_grid():
+    p = part(*(note(k * 480, length=n) for k, n in enumerate((1, 10, 49, 50, 149, 150))))
+    assert [n.length for n in apply(p, frozenset(range(6)), field="length", op="quantize", value=100).notes] == \
+        [100, 100, 100, 100, 100, 200]

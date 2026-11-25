@@ -36,10 +36,11 @@ def pitch_class(name: str) -> int:
 def note_number(text: str) -> int:
     """A note as its MIDI number: a name with its octave, C4 being 60 (``E1``, ``Bb0``), or the number itself."""
     text = text.strip()
-    m = re.fullmatch(rf"({_NOTE})(-?\d+)", text)
-    if not (m or text.isdigit()):
+    m = re.fullmatch(rf"({_NOTE})(-?\d+)", text, re.ASCII)
+    digits = text.isascii() and text.isdigit()
+    if not (m or digits):
         raise ValueError(f"{text!r} is not a note: a name with its octave, such as E1, or a number")
-    number = int(text) if text.isdigit() else _semitones(m.group(1)) + 12 * (int(m.group(2)) + 1)
+    number = int(text) if digits else _semitones(m.group(1)) + 12 * (int(m.group(2)) + 1)
     if not 0 <= number <= 127:
         raise ValueError(f"{text} is note {number}, not 0-127")
     return number
@@ -94,9 +95,13 @@ def parse_chord(text: str) -> Chord:
     return Chord(pitch_class(m.group(1)), SPELLINGS[m.group(2)], bass)
 
 
-def chart(text: str) -> list[tuple[Chord, ...]]:
+RESTS = ("-", "N.C.")
+
+
+def chart(text: str, *, rests: bool = False) -> list[tuple[Chord | None, ...]]:
     """A chord chart as bars of chords that share the bar evenly: ``| Am | F G | % |``, where ``%`` repeats the
-    bar before it; without bar lines, a chord a bar."""
+    bar before it; without bar lines, a chord a bar. With ``rests`` a ``-`` or ``N.C.`` takes a chord's place as
+    None, a stretch with no chord; without it one is refused."""
     if "|" in text:
         cells = [cell.split() for cell in text.split("|")]
         cells = cells[1:] if not cells[0] else cells
@@ -114,7 +119,9 @@ def chart(text: str) -> list[tuple[Chord, ...]]:
                 raise ValueError("the chart's first bar is %: nothing to repeat")
             bars.append(bars[-1])
         else:
-            bars.append(tuple(parse_chord(token) for token in cell))
+            if not rests and any(token in RESTS for token in cell):
+                raise ValueError(f"bar {number} of the chart holds a rest: this chart takes chords only")
+            bars.append(tuple(None if token in RESTS else parse_chord(token) for token in cell))
     return bars
 
 

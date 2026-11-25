@@ -12,7 +12,8 @@ from .edits import grid_ticks, note_value
 from .select import ALIASES, FIELDS, OPS, Operation, Range
 
 CONDITION = re.compile(r"^(\w+)(!=|<=|>=|=|<|>)(.+)$")
-NUMBER = re.compile(r"^-?\d+(\.\d+)?$")
+NUMBER = re.compile(r"^-?\d+(\.\d+)?$", re.ASCII)
+WHOLE = re.compile(r"^[+-]?\d+$", re.ASCII)
 TIME = re.compile(r"^(?:(\d{1,15}):([0-5]\d)(?:\.(\d+))?|(\d{1,15})(?:\.(\d+))?s)$", re.ASCII)
 
 
@@ -32,10 +33,9 @@ def number(text: str) -> float:
 
 
 def whole_number(text: str) -> int:
-    try:
-        return int(text.strip())
-    except ValueError:
-        raise ValueError(f"{text.strip()!r} is not a whole number") from None
+    if not WHOLE.match(text.strip()):
+        raise ValueError(f"{text.strip()!r} is not a whole number")
+    return int(text)
 
 
 def ticks_of(text: str, ppq: int) -> int:
@@ -44,10 +44,9 @@ def ticks_of(text: str, ppq: int) -> int:
     if t.startswith("1/"):
         denominator, triplet, dotted = note_value(t)
         return grid_ticks(denominator, ppq, triplet=triplet, dotted=dotted)
-    try:
-        return int(t.removesuffix("t"))
-    except ValueError:
-        raise ValueError(f"{t!r} is not a tick count or a note value like 1/16, 1/8t or 1/8.") from None
+    if not WHOLE.match(t.removesuffix("t")):
+        raise ValueError(f"{t!r} is not a tick count or a note value like 1/16, 1/8t or 1/8.")
+    return int(t.removesuffix("t"))
 
 
 def tick_value(text: str, ppq: int) -> int:

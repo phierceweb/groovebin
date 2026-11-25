@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 from pw_foundation.utils.env import resolve_str
@@ -19,6 +20,18 @@ def default_db() -> Path:
     return library_default_db(resolve_str(None, "XDG_CACHE_HOME"))
 
 
+def _whole(text: str) -> int:
+    if not re.fullmatch(r"\s*[+-]?\d+\s*", text, re.ASCII):
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number in ASCII digits")
+    return int(text)
+
+
+def _decimal(text: str) -> float:
+    if not re.fullmatch(r"\s*[+-]?(\d+(\.\d*)?|\.\d+)\s*", text, re.ASCII):
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number in ASCII digits")
+    return float(text)
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="groovebin",
                                  description="MIDI files, note maps and a pattern library, with no DAW or plug-in involved.")
@@ -30,9 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     remap.add_argument("--from", dest="src", required=True, choices=NAMES, help="the drum map the notes follow now")
     remap.add_argument("--to", dest="dst", required=True, choices=NAMES, help="the drum map to translate them to")
     remap.add_argument("-o", "--out", required=True, help="the .mid file to write")
-    remap.add_argument("--channel", type=int, action="append",
+    remap.add_argument("--channel", type=_whole, action="append",
                        help="remap only notes on this channel, 1-16 (repeatable)")
-    remap.add_argument("--track", type=int, action="append", help="remap only this track, from 1 (repeatable)")
+    remap.add_argument("--track", type=_whole, action="append", help="remap only this track, from 1 (repeatable)")
     remap.add_argument("--unmapped", choices=("keep", "drop"), default="keep",
                        help="a note with no counterpart keeps its pitch (default) or is dropped")
     remap.add_argument("--force", action="store_true", help="overwrite an existing --out file")
@@ -40,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     notes = sub.add_parser("notes", help="list a MIDI file's tracks and notes")
     notes.add_argument("input", help="the .mid file to read")
     notes.add_argument("--map", choices=ALL_NAMES, help="name each note's stroke, or keyswitch, from this map")
-    notes.add_argument("--track", type=int, action="append", help="list only this track, from 1 (repeatable)")
+    notes.add_argument("--track", type=_whole, action="append", help="list only this track, from 1 (repeatable)")
 
     _transform(sub)
     _timing(sub)
@@ -63,7 +76,7 @@ def _transform(sub) -> None:
                                     "are written back unchanged.")
     tr.add_argument("input", nargs="?", help="the .mid file to read")
     tr.add_argument("-o", "--out", help="the .mid file to write")
-    tr.add_argument("--track", type=int, action="append", help="transform only this track, from 1 (repeatable)")
+    tr.add_argument("--track", type=_whole, action="append", help="transform only this track, from 1 (repeatable)")
     tr.add_argument("--select", metavar="COND[,COND…]",
                     help="which notes: FIELD=VALUE, FIELD=LO-HI, or FIELD<, <=, >, >=, != VALUE, over position (bars, "
                          "where a whole number is the whole bar, or a time: 1:05.5 or 65.5s), pitch, velocity, length "
@@ -106,7 +119,7 @@ def _timing(sub) -> None:
     ke.add_argument("--set", dest="keys", action="append", metavar="KEY@BAR",
                     help='a major or minor key from that bar line, e.g. "A minor@1" or "Bb@9" (repeatable)')
     ke.add_argument("--map", choices=ALL_NAMES, help="the bass map the notes follow; its keyswitches stay out of the scale")
-    ke.add_argument("--track", type=int, action="append", metavar="N", help="find the scale in this track only (repeatable)")
+    ke.add_argument("--track", type=_whole, action="append", metavar="N", help="find the scale in this track only (repeatable)")
     ke.add_argument("-o", "--out", help="the .mid file to write; needed with --set")
     ke.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
@@ -151,7 +164,7 @@ def _library(sub) -> None:
     se.add_argument("--like-map", choices=NAMES, metavar="MAP", help="the drum map a --like file's notes follow")
     se.add_argument("--rhythm", metavar="LANES",
                     help='rank by rhythm against typed lanes, e.g. "kick=x.......x....... snare=....x.......x..."')
-    se.add_argument("--limit", type=int, default=50, metavar="N", help="at most N rows (default 50; 0 for all)")
+    se.add_argument("--limit", type=_whole, default=50, metavar="N", help="at most N rows (default 50; 0 for all)")
     se.add_argument("--json", action="store_true", help="the rows as JSON")
     _db(se)
 
@@ -160,18 +173,20 @@ def _library(sub) -> None:
                                     "next has the kick and snare onsets nearest those of the bar that followed the last "
                                     "pick in its own pattern. Timing moves up to 5 ticks and velocity up to 6.")
     ge.add_argument("--meter", required=True, metavar="N/D", help="e.g. 4/4; patterns with any bar in another meter are left out")
-    ge.add_argument("--bars", required=True, type=int, metavar="N", help="the phrase's length in bars")
+    ge.add_argument("--bars", required=True, type=_whole, metavar="N", help="the phrase's length in bars")
     ge.add_argument("-o", "--out", required=True, help="the .mid file to write")
     ge.add_argument("--category", help="whole value, any case")
     ge.add_argument("--role", help="intro, verse, pre-chorus, chorus, bridge or outro")
     ge.add_argument("--tempo", metavar="RANGE", help="as `groovebin search` takes it")
     ge.add_argument("--intensity", metavar="RANGE", help="as `groovebin search` takes it")
+    ge.add_argument("--rhythm", metavar="LANES", help="pick the bars that play this kick and snare, typed as "
+                    "`search --rhythm` reads them, staying on one pattern while it fits")
     ge.add_argument("--fills", action="store_true", help="every fourth bar from a fill pattern")
     ge.add_argument("--crash", action="store_true",
                     help="a crash on the downbeat after each fill, in place of the hat or ride stroke there")
     ge.add_argument("--level", action="store_true",
                     help="scale each bar's velocities to the first bar's kick and snare median")
-    ge.add_argument("--seed", type=int, metavar="N", help="0 or more; the same seed and index give the same phrase (default: a new one, printed)")
+    ge.add_argument("--seed", type=_whole, metavar="N", help="0 or more; the same seed and index give the same phrase (default: a new one, printed)")
     ge.add_argument("--map", choices=NAMES, help="write the notes in this drum map (default: the patterns' own)")
     ge.add_argument("--unmapped", choices=("keep", "drop"), default="keep",
                     help="with --map, a note with no counterpart keeps its pitch (default) or is dropped")
@@ -188,19 +203,19 @@ def _library(sub) -> None:
     fe.add_argument("-o", "--out", required=True, help="the .mid file to write")
     fe.add_argument("--map", choices=NAMES, help="the drum map the notes follow, for a feel per voice; a reference "
                                                  "file follows it too")
-    fe.add_argument("--grid", type=int, choices=(8, 16), help="the template's grid (default: the reference's own)")
-    fe.add_argument("--timing", type=float, default=100, metavar="PCT", help="how far each note moves, 0-100 (default 100)")
-    fe.add_argument("--velocity", type=float, default=100, metavar="PCT",
+    fe.add_argument("--grid", type=_whole, choices=(8, 16), help="the template's grid (default: the reference's own)")
+    fe.add_argument("--timing", type=_decimal, default=100, metavar="PCT", help="how far each note moves, 0-100 (default 100)")
+    fe.add_argument("--velocity", type=_decimal, default=100, metavar="PCT",
                     help="how far each velocity moves to the reference's accent, 0-100 (default 100)")
-    fe.add_argument("--track", type=int, action="append", metavar="N", help="change only this track (repeatable)")
+    fe.add_argument("--track", type=_whole, action="append", metavar="N", help="change only this track (repeatable)")
     fe.add_argument("--force", action="store_true", help="overwrite an existing --out file")
     _db(fe)
 
     anc = sub.add_parser("anchors", help="where a drum file's kick, snare and hands strike, a sixteenth grid a bar")
     anc.add_argument("input", help="the .mid file to read")
     anc.add_argument("--map", required=True, choices=NAMES, help="the drum map the notes follow")
-    anc.add_argument("--bars", type=int, metavar="N", help="the first N bars (default: through the last note)")
-    anc.add_argument("--track", type=int, action="append", metavar="N", help="read only this track (repeatable)")
+    anc.add_argument("--bars", type=_whole, metavar="N", help="the first N bars (default: through the last note)")
+    anc.add_argument("--track", type=_whole, action="append", metavar="N", help="read only this track (repeatable)")
     anc.add_argument("--json", action="store_true", help="a record per bar, as JSON")
 
     ro = sub.add_parser("roots", help="the chords a bassline implies, as a chart",
@@ -209,42 +224,47 @@ def _library(sub) -> None:
                                     "chord is major or minor when the bass holds its third, else a power chord.")
     ro.add_argument("input", help="the MIDI file holding the bassline")
     ro.add_argument("--map", choices=ALL_NAMES, help="the bass map its notes follow; its keyswitches are left out")
-    ro.add_argument("--track", type=int, action="append", metavar="N", help="read only this track (repeatable)")
+    ro.add_argument("--track", type=_whole, action="append", metavar="N", help="read only this track (repeatable)")
     ro.add_argument("--json", action="store_true", help="each chord with its ticks and bar, as JSON")
     ro.add_argument("-o", "--out", help="also write a .mid file of a note per chord, at its slash bass or else its root")
-    ro.add_argument("--octave", type=int, metavar="N", help="the -o file's octave, C4 being 60 (default 2: notes 36-47)")
+    ro.add_argument("--octave", type=_whole, metavar="N", help="the -o file's octave, C4 being 60 (default 2: notes 36-47)")
     ro.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
     an = sub.add_parser("analyze", help="what a bassline does: its rhythm, against drums and against chords")
     an.add_argument("input", help="the MIDI file holding the bassline")
     an.add_argument("--map", choices=ALL_NAMES, help="the bass map its notes follow; keyswitches are counted, not played")
-    an.add_argument("--track", type=int, action="append", metavar="N", help="read only this track (repeatable)")
+    an.add_argument("--track", type=_whole, action="append", metavar="N", help="read only this track (repeatable)")
     an.add_argument("--drums", metavar="FILE", help="a MIDI file holding the drums on the same timeline")
     an.add_argument("--drum-map", choices=NAMES, help="the drum map the --drums notes follow")
-    an.add_argument("--drum-track", type=int, action="append", metavar="N", help="read only this track of --drums")
+    an.add_argument("--drum-track", type=_whole, action="append", metavar="N", help="read only this track of --drums")
     an.add_argument("--chords", metavar="CHART", help="the chords under the line, e.g. \"| Am | F G |\"; a shorter "
                                                       "chart repeats")
     an.add_argument("--json", action="store_true", help="the report as JSON")
 
     ba = sub.add_parser("bass", help="a bassline over a drum file's kicks and a chord chart",
-                        description="A note on every kick; the chord's bass note on every change; a chord tone between, "
-                                    "as often as EZbass's own grooves play each; approach notes into changes.")
+                        description="By default: a note on every kick; the chord's bass note on every change; a chord tone between, "
+                                    "as often as EZbass's own grooves play each; approach notes into changes, but none when the chart "
+                                    "holds a rest.")
     ba.add_argument("--drums", required=True, metavar="FILE", help="the MIDI file holding the drums")
     ba.add_argument("--drum-map", required=True, choices=NAMES, help="the drum map the drums follow")
-    ba.add_argument("--drum-track", type=int, action="append", metavar="N", help="read only this track of --drums")
-    ba.add_argument("--chords", metavar="CHART", help="the chords, e.g. \"| Am | F G |\"; a shorter chart repeats")
+    ba.add_argument("--drum-track", type=_whole, action="append", metavar="N", help="read only this track of --drums")
+    ba.add_argument("--chords", metavar="CHART", help="the chords, e.g. \"| Am | F G |\"; a shorter chart repeats, and "
+                                                      "- or N.C. is a rest the rules leave empty")
     ba.add_argument("--roots-from", metavar="FILE", help="take the chords a bassline implies, as `groovebin roots` does")
     ba.add_argument("-o", "--out", required=True, help="the .mid file to write")
     ba.add_argument("--map", choices=ALL_NAMES, help="the bass map to write in; also read for --roots-from's keyswitches")
     ba.add_argument("--mute", action="store_true", help="the map's loud-mute keyswitch on every snare the bass leaves open")
-    ba.add_argument("--approach", type=float, metavar="PCT", help="how often a change gets an approach note, 0-100 "
-                                                                   "(default 58.8)")
+    ba.add_argument("--approach", type=_decimal, metavar="PCT", help="how often a change gets an approach note, 0-100 "
+                                                                   "(default 58.8; 0 with --push, --root-only or a rest)")
+    ba.add_argument("--on", choices=("kick", "kick,snare"), default="kick", help="the drum strokes that get a note (default kick)")
+    ba.add_argument("--root-only", action="store_true", help="the chord's bass note in place of the chord tones drawn by rate")
+    ba.add_argument("--push", action="store_true", help="a note in the last eighth before a change of bass note plays the new bass note")
     ba.add_argument("--library", metavar="DB", help="pick real bars from a bass library index instead of the rules")
     ba.add_argument("--role", help="with --library, only patterns of this role")
     ba.add_argument("--tempo", metavar="RANGE", help="with --library, only patterns in this tempo range")
     ba.add_argument("--low", default="E1", metavar="NOTE", help="the lowest note (default E1)")
     ba.add_argument("--high", default="D3", metavar="NOTE", help="the highest note (default D3)")
-    ba.add_argument("--seed", type=int, metavar="N", help="0 or more; the same seed and files give the same line")
+    ba.add_argument("--seed", type=_whole, metavar="N", help="0 or more; the same seed and files give the same line")
     ba.add_argument("--force", action="store_true", help="overwrite an existing --out file")
 
     sh = sub.add_parser("show", help="one pattern as text: drum lanes, or a piano roll when it has no drum map")

@@ -193,7 +193,7 @@ def cmd_transform(args: argparse.Namespace) -> int:
     hold = kit.is_keyswitch if kit is not None and kit.kind == "bass" else _never
     if args.seed == "random":
         seed = secrets.randbelow(2**32)
-    elif not args.seed.isdecimal():
+    elif not (args.seed.isascii() and args.seed.isdecimal()):
         raise InvalidInputError(f"--seed {args.seed!r}: 0 or more, or random")
     else:
         seed = int(args.seed)

@@ -36,15 +36,24 @@ def found(rows: list[dict], limit: int | None, *, distinct: int = 0) -> list[str
     return lines
 
 
-def picked(pool, ph) -> list[str]:
+def picked(pool, ph, *, typed: bool = False) -> list[str]:
+    """The pool, the seed and every pick; with ``typed``, how near the picks came to the typed rhythm."""
     fills = f", {len(pool.fills)} fill bar(s)" if pool.fills else ""
     left = f"; {pool.left_out} pattern(s) with a bar in another meter left out" if pool.left_out else ""
     lines = [f"pool: {len(pool.bars)} beat bar(s) from {len(pool.patterns)} pattern(s){fills}{left}",
              f"seed {ph.seed}: {len(ph.picks)} bar(s) of {ph.sig[0]}/{ph.sig[1]}, {len(ph.notes)} note(s) in {ph.map}"]
+    if typed:
+        beats = [p for p in ph.picks if not p.fill]
+        grooves = [p.replaces if p.fill else p.bar for p in ph.picks]
+        changes = sum(pool.following(a) is not b for a, b in zip(grooves, grooves[1:], strict=False))
+        lines.append(f"  typed rhythm: {sum(not p.distance for p in beats)} of {len(beats)} bar(s) exact, "
+                     f"{sum(p.distance for p in beats)} step(s) off, {changes} change(s) of pattern")
     for k, p in enumerate(ph.picks, 1):
         line = f"  bar {k:<3d} {'fill' if p.fill else 'beat'} {p.bar.id} bar {p.bar.index + 1} of {p.bar.count}"
         if p.fill:
             line += f", replaces {p.replaces.id} bar {p.replaces.index + 1}, {p.distance} onset step(s) from it"
+        elif typed and p.distance:
+            line += f", {p.distance} step(s) off"
         lines.append(line)
     if ph.level is not None:
         lines.append(f"  velocities levelled to a kick and snare median of {ph.level:g}")

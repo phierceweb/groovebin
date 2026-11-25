@@ -40,6 +40,7 @@ Needs Python 3.12 or newer.
     groovebin index ~/Grooves --map addictive-drums-2
     groovebin search --role verse --meter 4/4 --tempo 90-110
     groovebin generate --meter 4/4 --bars 16 --fills --role verse -o verse.mid
+    groovebin generate --meter 4/4 --bars 8 --rhythm "kick=x.......x.x..... snare=....x.......x..." -o beat.mid
     groovebin search --like 3f2a9c --beat
     groovebin anchors groove.mid --map addictive-drums-2
     groovebin feel programmed.mid --from played.mid --map gm -o felt.mid

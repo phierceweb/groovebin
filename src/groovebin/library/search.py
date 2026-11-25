@@ -16,9 +16,9 @@ SHOWN = ("id", "library", "category", "group_name", "variant", "role", "meter", 
          "swing", "intensity", "bars", "ppq", "map", "file", "density", "syncopation", "subdivision", "swing8",
          "swing16", "lag", "accent", "chords", "changes", "quality")
 NUMBER = r"(-?(?:\d+(?:\.\d*)?|\.\d+))"
-_RANGE = re.compile(rf"^{NUMBER}\s*-\s*{NUMBER}$")
-_COMPARE = re.compile(rf"^(<=|>=|<|>)\s*{NUMBER}$")
-_EXACT = re.compile(rf"^{NUMBER}$")
+_RANGE = re.compile(rf"^{NUMBER}\s*-\s*{NUMBER}$", re.ASCII)
+_COMPARE = re.compile(rf"^(<=|>=|<|>)\s*{NUMBER}$", re.ASCII)
+_EXACT = re.compile(rf"^{NUMBER}$", re.ASCII)
 DECIMALS = 3
 SHOWN_GROUPS = 5
 MAX_QUERY_BARS = 16

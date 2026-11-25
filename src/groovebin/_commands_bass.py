@@ -15,7 +15,7 @@ from . import _views, _views_bass
 from ._files import read_song, refuse_overwrite, track_indices
 from .harmony import chart, chart_spans, chart_text, note_number, root_notes, roots, scale_name, scale_of
 from .library.bass_picker import lay, load_bass_bars, pick_bass
-from .library.bass_rules import APPROACH_RATE, bass_line
+from .library.bass_rules import NO_APPROACH, bass_line
 from .library.bassline import analyze
 from .library.groove import VOICES, rhythm, voices
 from .maps import note_map
@@ -99,7 +99,7 @@ def _chord_spans(args: argparse.Namespace, meters, bars: int, ppq: int):
         raise InvalidInputError("bass takes --chords or --roots-from, not both" if args.chords is not None
                                 else "bass needs --chords or --roots-from")
     if args.chords is not None:
-        return chart_spans(chart(args.chords), meters, bars), None
+        return chart_spans(chart(args.chords, rests=not args.library), meters, bars), None
     song = read_song(args.roots_from)
     kit = note_map(args.map) if args.map else None
     notes = [n for t in song.tracks for n in t.notes if kit is None or not kit.is_keyswitch(n.pitch)]
@@ -118,9 +118,9 @@ def _above_keyswitches(register: tuple[int, int], map_name: str) -> None:
 
 
 def _library_line(args, drum_notes, meters, bars, spans, seed, register) -> tuple[tuple, tuple, list[str], int]:
-    if args.mute or args.approach is not None:
+    if args.mute or args.approach is not None or args.on != "kick" or args.root_only or args.push:
         raise InvalidInputError("--library picks real bars, which bring their own approaches and articulations: drop "
-                                "--mute and --approach")
+                                "--mute, --approach, --on, --root-only and --push")
     sigs = {meters.meter_at(meters.bar_line(b)) for b in range(1, bars + 1)}
     pool = [b for sig in sorted(sigs) for b in load_bass_bars(args.library, sig=sig, role=args.role, tempo=args.tempo)]
     maps = {b.map for b in pool}
@@ -141,6 +141,8 @@ def cmd_bass(args: argparse.Namespace) -> int:
     kit = note_map(args.map) if args.map else None
     if kit is not None and kit.kind != "bass":
         raise InvalidInputError(f"{args.map} is a drum map: bass writes a line in a bass map")
+    if args.mute and args.on != "kick":
+        raise InvalidInputError("--mute goes on a snare the bass leaves open: with --on kick,snare there is none")
     if args.mute and not args.library and (kit is None or kit.find("keyswitch repeat loud mute") is None):
         raise InvalidInputError("--mute needs --map ezbass: the mute is its keyswitch")
     drum_song, name = read_song(args.drums), Path(args.drums).name
@@ -160,10 +162,16 @@ def cmd_bass(args: argparse.Namespace) -> int:
     else:
         table = voices(args.drum_map)
         kicks = [(n.tick, n.velocity) for n in drum_notes if table.get(n.pitch) == VOICES.index("kick")]
-        snares = [n.tick for n in drum_notes if table.get(n.pitch) == VOICES.index("snare")]
-        line = bass_line(kicks, snares, spans, drum_song.ppq, seed=seed, register=register,
-                         approach=APPROACH_RATE if args.approach is None else args.approach / 100,
-                         mute=kit.find("keyswitch repeat loud mute") if args.mute else None)
+        hits = [(n.tick, n.velocity) for n in drum_notes if table.get(n.pitch) == VOICES.index("snare")]
+        rate = None if args.approach is None else args.approach / 100
+        if args.chords is not None and any(c is None for cell in chart(args.chords, rests=True) for c in cell):
+            if rate:
+                raise InvalidInputError(NO_APPROACH)
+            rate = 0
+        line = bass_line(kicks, [t for t, _v in hits], spans, drum_song.ppq, seed=seed, register=register,
+                         approach=rate,
+                         mute=kit.find("keyswitch repeat loud mute") if args.mute else None,
+                         snare_hits=hits if args.on == "kick,snare" else None, root_only=args.root_only, push=args.push)
         notes, events, head = line.notes, (), [_views_bass.written(name, bars, line)]
     conductor = tuple(e for t in drum_song.tracks for e in t.events if e.meta_type in CONDUCTOR)
     title = b"Bass"

@@ -3,6 +3,34 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/).
 
+## [0.9.0] — 2026-11-24
+
+### Added
+- `generate --rhythm LANES`: a phrase picked to a typed kick and snare, one pattern kept in its own order while it
+  fits; the listing counts the exact bars, the steps off and the changes of pattern.
+- `library.drum_picker.pick_drums`, and `generate.phrase(…, pick=)`.
+- `bass --on kick,snare`: the snare strokes get notes as well as the kicks; the report counts them.
+- `bass --root-only`: the chord's bass note in place of the chord tones drawn by rate.
+- `bass --push`: notes in the last eighth before a change of bass note play the new bass note; the report counts
+  the notes pushed.
+- `bass_rules.bass_line(…, snare_hits=, root_only=, push=)`, and `BassLine.on_snares` and `.pushes`.
+- `bass --chords` takes `-` or `N.C.` as a rest: no note starts or rings in it, and the chord after it gets no
+  note of its own. `harmony.chart(…, rests=True)` reads one as None, `chart_spans` leaves a gap for it, and
+  `bass_line` keeps out of the gaps between its spans.
+- With `--push`, `--root-only` or a rest in the chart, `bass` writes no approach notes: `--approach` is 0 there
+  unless given, and a rate above 0 is refused. `bass_line`'s `approach` defaults to None: the measured rate,
+  or 0 with `push`, `root_only` or a gap before or between its spans.
+
+### Changed
+- `quantize:length=GRID` gives no note less than one GRID: a note shorter than half a grid takes one grid
+  instead of 1 tick.
+
+### Fixed
+- Every number typed on the command line takes ASCII digits only: `--select` and `--op` values, tick counts,
+  `search` ranges, `generate --meter`, note numbers, `--seed` and every numeric flag. `١٢`, `²` and `1_0` are
+  refused by name instead of read as numbers or failing with Python's own message.
+- An index of a MIDI CSV whose meter column holds a non-ASCII digit takes the file's own meter instead of failing.
+
 ## [0.8.0] — 2026-10-23
 
 ### Added

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import secrets
+from functools import partial
 from pathlib import Path
 
 from pw_foundation.exceptions import InvalidInputError
@@ -13,6 +14,7 @@ from pw_foundation.utils.io import atomic_write_bytes
 from . import _views, _views_library
 from ._files import is_file, named, read_song, refuse_overwrite, track_indices
 from ._parsers import default_db
+from .library.drum_picker import pick_drums
 from .library.generate import load_pool, parse_meter, phrase, phrase_song
 from .library.groove import VOICES, file_rhythm, landing_bar, rhythm
 from .library.groove_text import lane, parse_rhythm, rhythm_text
@@ -86,10 +88,16 @@ def cmd_generate(args: argparse.Namespace) -> int:
     pool = load_pool(args.db or default_db(), sig=sig, category=args.category, role=args.role, tempo=args.tempo,
                      intensity=args.intensity, fills=args.fills)
     seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
+    pick = None
+    if args.rhythm is not None:
+        typed, voices = parse_rhythm(args.rhythm)
+        if VOICES.index("hands") in voices:
+            raise InvalidInputError("generate picks by kick and snare: leave the hands lane out of --rhythm")
+        pick = partial(pick_drums, rhythm=typed, voices=voices)
     ph = phrase(pool, bars=args.bars, seed=seed, fills=args.fills, map_name=args.map, unmapped=args.unmapped,
-                crash=args.crash, level=args.level)
+                crash=args.crash, level=args.level, pick=pick)
     atomic_write_bytes(args.out, write(phrase_song(ph)))
-    print("\n".join(_views_library.picked(pool, ph)))
+    print("\n".join(_views_library.picked(pool, ph, typed=pick is not None)))
     print(f"out : {args.out}")
     return 0
 

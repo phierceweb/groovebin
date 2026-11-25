@@ -91,16 +91,16 @@ def chart_text(spans: list[Span], meters: MeterMap, bars: int) -> str:
     return "| " + " | ".join(cells) + " |"
 
 
-def chart_spans(bars_of_chords: list[tuple[Chord, ...]], meters: MeterMap, bars: int) -> list[Span]:
+def chart_spans(bars_of_chords: list[tuple[Chord | None, ...]], meters: MeterMap, bars: int) -> list[Span]:
     """A chart laid over ``bars`` bars from bar 1, looping when it is shorter; a bar's chords share it evenly, the
-    last taking what an uneven split leaves."""
+    last taking what an uneven split leaves. A rest (None) takes its share and leaves no span."""
     spans = []
     for bar in range(1, bars + 1):
         chords = bars_of_chords[(bar - 1) % len(bars_of_chords)]
         lo = meters.bar_line(bar)
         size = meters.bar_ticks(lo)
         edges = [lo + size * k // len(chords) for k in range(len(chords))] + [lo + size]
-        spans += [Span(a, b, c) for a, b, c in zip(edges[:-1], edges[1:], chords, strict=True)]
+        spans += [Span(a, b, c) for a, b, c in zip(edges[:-1], edges[1:], chords, strict=True) if c is not None]
     return spans
 
 

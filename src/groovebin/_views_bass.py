@@ -12,8 +12,10 @@ def rooted(name: str, bars: int, notes: int, keyswitches: int) -> str:
 
 
 def written(drums: str, bars: int, line) -> str:
+    snares = "" if line.on_snares is None else f"{line.on_snares} on a snare, "
     text = (f"bass over {bars} bar(s) of {drums}: {len(line.notes) - line.mutes} note(s), {line.on_kicks} on a kick, "
-            f"{line.on_changes} chord change(s), {line.approaches} approach note(s)")
+            f"{snares}{line.on_changes} chord change(s), {line.approaches} approach note(s)")
+    text += "" if line.pushes is None else f", {line.pushes} push(es)"
     return text + (f", {line.mutes} snare mute(s)" if line.mutes else "")
 
 

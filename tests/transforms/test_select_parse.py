@@ -133,3 +133,22 @@ def test_ticks_of_reads_dotted_note_values():
         == (360, 720)
     with pytest.raises(ValueError, match="not a whole number of ticks"):
         ticks_of("1/64.", 112)
+
+
+@pytest.mark.parametrize("text", ["٣", "1.٥", "²", "1_0"])
+def test_a_number_takes_ascii_digits_only(text):
+    with pytest.raises(ValueError, match="is not a number"):
+        parse_select(f"velocity={text}", ppq=960)
+
+
+@pytest.mark.parametrize("text", ["٣", "²", "1_0", "1.0"])
+def test_a_whole_number_takes_ascii_digits_only(text):
+    with pytest.raises(ValueError, match="is not a whole number"):
+        parse_operation("add", f"velocity={text}", ppq=960)
+    assert parse_operation("add", "velocity=+2", ppq=960).value == 2
+
+
+@pytest.mark.parametrize("text", ["٢٤٠", "٢٤٠t", "²", "2_40"])
+def test_a_tick_count_takes_ascii_digits_only(text):
+    with pytest.raises(ValueError, match="not a tick count or a note value"):
+        ticks_of(text, 960)

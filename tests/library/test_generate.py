@@ -93,7 +93,7 @@ def test_a_pool_needs_a_drum_map_to_find_kick_and_snare(tmp_path):
 
 def test_meters():
     assert (parse_meter(" 6/8 "), parse_meter("4/4")) == ((6, 8), (4, 4))
-    for bad in ("4", "4/5", "0/4", "x/4", "4/0", "1/32"):
+    for bad in ("4", "4/5", "0/4", "x/4", "4/0", "1/32", "٤/٤", "²/4"):
         with pytest.raises(ValueError, match="bad meter"):
             parse_meter(bad)
 
